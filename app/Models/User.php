@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Filament\Panel;
 use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -41,5 +42,12 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+       public function canAccessPanel(Panel $panel): bool
+    {
+        // Assure-toi que le nom du rôle correspond EXACTEMENT
+        // à ce que tu as créé/assigné en prod.
+        return $this->hasAnyRole(['super_admin', 'Gestionnaire']);
     }
 }
