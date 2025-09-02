@@ -6,10 +6,11 @@ namespace App\Models;
 use Filament\Panel;
 use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Notifications\Notifiable;
+use Filament\Models\Contracts\FilamentUser;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 
-class User extends Authenticatable
+class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable,HasRoles;
@@ -44,10 +45,9 @@ class User extends Authenticatable
         ];
     }
 
-       public function canAccessPanel(Panel $panel): bool
+      public function canAccessPanel(Panel $panel): bool
     {
-        // Assure-toi que le nom du rôle correspond EXACTEMENT
-        // à ce que tu as créé/assigné en prod.
-        return $this->hasAnyRole(['super_admin', 'Gestionnaire']);
+        // 'admin' = id du panel (change si le tien est différent)
+        return $this->hasRole('super_admin') || $this->can('access_admin_panel')|| $this->can('Gestionnaire');
     }
 }
