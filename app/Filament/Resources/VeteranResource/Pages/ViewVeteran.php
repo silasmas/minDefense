@@ -1,20 +1,22 @@
 <?php
 namespace App\Filament\Resources\VeteranResource\Pages;
 
-use App\Filament\Resources\VeteranResource;
-use App\Models\Veteran;
-use App\Models\VeteranVerification;
-use App\Services\SmsSender;
 use Filament\Actions;
+use App\Models\Veteran;
+use App\Services\SmsSender;
+use Illuminate\Support\Str;
+use App\Models\VeteranVerification;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
-use Illuminate\Support\Str;
+use App\Filament\Resources\VeteranResource;
+use Filament\Resources\Pages\Concerns\HasRelationManagers;
 
 class ViewVeteran extends ViewRecord
 {
+    use HasRelationManagers; // ← indispensable pour voir les onglets relations
     protected static string $resource = VeteranResource::class;
 
     protected function getHeaderActions(): array
@@ -120,11 +122,11 @@ class ViewVeteran extends ViewRecord
                         ->success()
                         ->send();
                 }),
-            Actions\Action::make('carte_pdf')
-                ->label('Carte PDF')
-                ->icon('heroicon-m-identification')
-                ->url(fn(Veteran $record) => route('veterans.card', $record))
-                ->openUrlInNewTab(),
+            // Actions\Action::make('carte_pdf')
+            //     ->label('Carte PDF')
+            //     ->icon('heroicon-m-identification')
+            //     ->url(fn(Veteran $record) => route('veterans.card', $record))
+            //     ->openUrlInNewTab(),
             Actions\EditAction::make(),
         ];
     }

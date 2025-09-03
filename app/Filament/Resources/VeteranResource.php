@@ -1,25 +1,28 @@
 <?php
 namespace App\Filament\Resources;
 
-use App\Filament\Resources\VeteranResource\Pages;
-use App\Filament\Resources\VeteranResource\RelationManagers\StatusHistoryRelationManager;
-use App\Filament\Resources\VeteranResource\RelationManagers\VeteranCasesRelationManager;
-use App\Filament\Resources\VeteranResource\RelationManagers\VeteranPaymentsRelationManager;
-use App\Models\Veteran;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Filament\Forms;
-use Filament\Forms\Form;
-use Filament\Infolists;
-use Filament\Infolists\Infolist;
-use Filament\Notifications\Notification;
-use Filament\Resources\Resource;
 use Filament\Tables;
+use App\Models\Veteran;
+use Filament\Infolists;
+use Filament\Forms\Form;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Filament\Infolists\Infolist;
+use Filament\Resources\Resource;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Storage;
-use League\Csv\Reader;
+use Illuminate\Support\Facades\App;
+use Filament\Tables\Actions\BulkAction;
+use Filament\Notifications\Notification;
+use App\Filament\Exports\VeteranExporter;
+use App\Filament\Imports\VeteranImporter;
+use Filament\Tables\Actions\ExportAction;
+use Filament\Tables\Actions\ImportAction;
+use Illuminate\Database\Eloquent\Builder;
+use Filament\Actions\Exports\Enums\ExportFormat;
+use App\Filament\Resources\VeteranResource\Pages;
+use App\Filament\Resources\VeteranResource\RelationManagers\PaymentsRelationManager;
 
 class VeteranResource extends Resource
 {
@@ -111,8 +114,10 @@ class VeteranResource extends Resource
             ->columns([
                 Tables\Columns\ImageColumn::make('photo_path')
                     ->label('')
-                    ->disk('public')
+                    ->disk(fn($record) => $record->photo_disk ?? 'public')
+                    ->getStateUsing(fn($record) => $record->photo_for_column) // 👈 utilise l'accessor
                     ->circular()
+                    ->defaultImageUrl(asset('images/default.jpg'))
                     ->toggleable(),
 
                 Tables\Columns\TextColumn::make('card_number')->label('N° carte')->toggleable(),
@@ -202,41 +207,190 @@ class VeteranResource extends Resource
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\RestoreBulkAction::make(),
                     Tables\Actions\ForceDeleteBulkAction::make(),
-                    \Filament\Tables\Actions\BulkAction::make('notify_month_sms')
+                    BulkAction::make('notify_month_sms')
                         ->label('Envoyer SMS pension (mois)')
                         ->icon('heroicon-m-megaphone')
                         ->form([
-                            Forms\Components\DatePicker::make('period_month')->label('Mois')->required(),
-                            Forms\Components\Select::make('mode')->label('Mode')->options([
+                            Forms\Components\DatePicker::make('period_month')
+                                ->label('Mois')->required()->native(false),
+
+                            Forms\Components\Select::make('mode')
+                                ->label('Mode')->options([
                                 'resume' => 'Vrac (total par vétéran)',
                                 'detail' => 'Détaillé (toutes lignes)',
                             ])->default('resume')->required()->native(false),
+
+                            Forms\Components\Textarea::make('template')
+                                ->label('Modèle de message')->rows(4)->required()
+                                ->default("Bonjour {prenom} {nom}, votre pension de {mois} est de {montant_total} {devise}. {details}")
+                                ->helperText(<<<'HTML'
+Variables : <strong>{prenom}</strong>, <strong>{nom}</strong>, <strong>{mois}</strong>, <strong>{montant_total}</strong>, <strong>{devise}</strong>, <strong>{details}</strong>, <strong>{matricule}</strong>, <strong>{carte}</strong>
+HTML),
                         ])
+
+                    /* ---------- BOUTON : PRÉVISUALISER (ne fait qu’afficher un aperçu) ---------- */
+                        ->extraModalFooterActions([
+                            Tables\Actions\Action::make('preview')
+                                ->label('Prévisualiser')
+                                ->icon('heroicon-m-eye')
+                                ->color('gray')
+                                ->action(function(Collection$records,array$data){
+
+                                    /* helpers pour rendu + métriques SMS */
+                                    $fmtMoney=fn(float$n)=>number_format($n,0,' ',' ');
+
+                                    $render = function (string $tpl, array $ctx): string {
+                                        return preg_replace_callback('/\{(\w+)\}/', function ($m) use ($ctx) {
+                                            $k = $m[1];
+                                            return array_key_exists($k, $ctx) ? (string) $ctx[$k] : $m[0];
+                                        }, $tpl);
+                                    };
+
+                                    // Détection GSM-7 / UCS-2 + calcul segments
+                                    $isGsm7 = function (string $text) {
+                                        $gsm     = "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
+                                        $ext     = "^{}\\[~]|€";
+                                        $allowed = $gsm . $ext;
+                                        // Tous les caractères doivent appartenir au set autorisé (ou être \n \r)
+                                        $len = mb_strlen($text, 'UTF-8');
+                                        for ($i = 0; $i < $len; $i++) {
+                                            $ch = mb_substr($text, $i, 1, 'UTF-8');
+                                            if (! str_contains($allowed, $ch)) {
+                                                return false;
+                                            }
+                                        }
+                                        return true;
+                                    };
+
+                                    $smsMetrics = function (string $text) use ($isGsm7) {
+                                        $extChars = ['^', '{', '}', '\\', '[', '~', ']', '|', '€']; // comptent 2 septets en GSM7
+                                        if ($isGsm7($text)) {
+                                            $len = 0;
+                                            $L   = mb_strlen($text, 'UTF-8');
+                                            for ($i = 0; $i < $L; $i++) {
+                                                $ch = mb_substr($text, $i, 1, 'UTF-8');
+                                                $len += in_array($ch, $extChars, true) ? 2 : 1; // septets
+                                            }
+                                            $segments = $len <= 160 ? 1 : (int) ceil($len / 153);
+                                            return ['GSM-7', $L, $segments]; // on retourne nb de caractères “visibles” + segments
+                                        } else {
+                                            $L        = mb_strlen($text, 'UTF-8'); // UCS-2: 70/67
+                                            $segments = $L <= 70 ? 1 : (int) ceil($L / 67);
+                                            return ['UCS-2', $L, $segments];
+                                        }
+                                    };
+
+                                    /* ---- enregistrements sélectionnés & vérifs ---- */
+                                    if ($records->isEmpty()) {
+                                        Notification::make()->title('Sélection vide')->danger()->send();
+                                        return;
+                                    }
+                                    if (empty($data['period_month'])) {
+                                        Notification::make()->title('Choisis d’abord le mois')->danger()->send();
+                                        return;
+                                    }
+
+                                    $month = Carbon::parse($data['period_month'])->startOfMonth();
+                                    $mode  = $data['mode'] ?? 'resume';
+                                    $tpl   = trim($data['template'] ?? '');
+
+                                    // On prend le premier vétéran sélectionné comme EXEMPLE
+                                    /** @var \App\Models\Veteran|null $vet */
+                                    $vet = $records->first();
+                                    if (! $vet) {
+                                        Notification::make()->title('Pas de vétéran')->danger()->send();
+                                        return;
+                                    }
+
+                                    // Récupérer ses lignes pour le mois
+                                    $rows = $vet->payments()->whereDate('period_month', $month)->orderBy('period_month')->get();
+                                    if ($rows->isEmpty()) {
+                                        Notification::make()->title("Aucune ligne pour {$month->format('m/Y')}")->warning()->send();
+                                        return;
+                                    }
+
+                                    $cur     = $rows->first()->currency ?? 'CDF';
+                                    $total   = (float) $rows->sum('amount');
+                                    $details = $mode === 'detail'
+                                    ? $rows->map(fn($r) => $fmtMoney((float) $r->amount) . " {$cur}")->implode(' + ')
+                                    : '';
+
+                                    $ctx = [
+                                        'prenom'        => $vet->firstname ?? '',
+                                        'nom'           => $vet->lastname ?? '',
+                                        'mois'          => $month->format('m/Y'),
+                                        'montant_total' => $fmtMoney($total),
+                                        'devise'        => $cur,
+                                        'details'       => $details,
+                                        'matricule'     => $vet->service_number ?? '',
+                                        'carte'         => $vet->card_number ?? '',
+                                    ];
+
+                                    $msg                  = $render($tpl, $ctx);
+                                    [$enc, $chars, $segs] = $smsMetrics($msg);
+
+                                    Notification::make()
+                                        ->title('Aperçu SMS')
+                                        ->body(
+                                            "Vers: {$vet->phone}\n\n" .
+                                            $msg . "\n\n" .
+                                            "Compteur: {$chars} caractères — {$segs} SMS ({$enc})"
+                                        )
+                                        ->persistent()
+                                        ->success()
+                                        ->send();
+                                }),
+                        ])
+
+                    /* ---------- ENVOI EFFECTIF ---------- */
                         ->action(function (Collection $records, array $data) {
                             $month = Carbon::parse($data['period_month'])->startOfMonth();
+                            $mode  = $data['mode'] ?? 'resume';
+                            $tpl   = trim($data['template'] ?? '');
+
+                            $fmtMoney = fn(float $n) => number_format($n, 0, ' ', ' ');
+
+                            $render = function (string $tpl, array $ctx): string {
+                                return preg_replace_callback('/\{(\w+)\}/', function ($m) use ($ctx) {
+                                    return array_key_exists($m[1], $ctx) ? (string) $ctx[$m[1]] : $m[0];
+                                }, $tpl);
+                            };
+
+                            $sent = 0; $skipped = 0;
+
                             foreach ($records as $vet) {
                                 /** @var \App\Models\Veteran $vet */
-                                if (! $vet->phone) {
-                                    continue;
-                                }
+                                if (! $vet->phone) {$skipped++;continue;}
 
                                 $rows = $vet->payments()->whereDate('period_month', $month)->orderBy('period_month')->get();
-                                if ($rows->isEmpty()) {
-                                    continue;
-                                }
+                                if ($rows->isEmpty()) {$skipped++;continue;}
 
-                                $cur = $rows->first()->currency ?? 'CDF';
-                                if ($data['mode'] === 'resume') {
-                                    $total = (float) $rows->sum('amount');
-                                    $msg   = "Pension " . $month->format('m/Y') . ": " . number_format($total, 0, ' ', ' ') . " {$cur}.";
-                                } else {
-                                    $msg = "Pension " . $month->format('m/Y') . ": " .
-                                    $rows->map(fn($r) => number_format((float) $r->amount, 0, ' ', ' ') . " {$cur}")
-                                        ->implode(' + ') . ".";
-                                }
-                                app(\App\Services\SmsSender::class)->send($vet->phone, $msg);
+                                $cur     = $rows->first()->currency ?? 'CDF';
+                                $total   = (float) $rows->sum('amount');
+                                $details = $mode === 'detail'
+                                ? $rows->map(fn($r) => $fmtMoney((float) $r->amount) . " {$cur}")->implode(' + ')
+                                : '';
+
+                                $ctx = [
+                                    'prenom'        => $vet->firstname ?? '',
+                                    'nom'           => $vet->lastname ?? '',
+                                    'mois'          => $month->format('m/Y'),
+                                    'montant_total' => $fmtMoney($total),
+                                    'devise'        => $cur,
+                                    'details'       => $details,
+                                    'matricule'     => $vet->service_number ?? '',
+                                    'carte'         => $vet->card_number ?? '',
+                                ];
+
+                                $msg = $render($tpl, $ctx);
+                                App::make(\App\Services\SmsSender::class)->send($vet->phone, $msg);
+                                $sent++;
                             }
-                            \Filament\Notifications\Notification::make()->title('SMS envoi en cours')->success()->send();
+
+                            Notification::make()
+                                ->title("SMS envoyés : {$sent} • Ignorés : {$skipped}")
+                                ->success()
+                                ->send();
                         }),
                     Tables\Actions\BulkAction::make('cartes_pdf')
                         ->label('Cartes PDF (sélection)')
@@ -246,55 +400,214 @@ class VeteranResource extends Resource
                             $pdf  = Pdf::loadHTML($html)->setPaper('a4', 'portrait');
                             return response()->streamDownload(fn() => print($pdf->output()), 'cartes.pdf');
                         }),
+                    Tables\Actions\BulkAction::make('export_selected_csv')
+                        ->label('Exporter sélection (CSV)')
+                        ->icon('heroicon-m-document-arrow-down')
+                        ->action(function (Collection $records) {
+                            $ids     = $records->pluck('id')->all();
+                            $headers = [
+                                'firstname', 'lastname', 'middlename', 'gender', 'birthdate', 'birthplace',
+                                'service_number', 'nin', 'branch', 'rank', 'phone', 'email', 'address',
+                                'status', 'card_number', 'card_status', 'card_expires_at',
+                            ];
+
+                            return response()->streamDownload(function () use ($headers, $ids) {
+                                $out = fopen('php://output', 'w');
+                                fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF)); // BOM UTF-8
+                                fputcsv($out, $headers);
+
+                                \App\Models\Veteran::whereIn('id', $ids)
+                                    ->orderBy('lastname')->orderBy('firstname')
+                                    ->chunk(1000, function ($chunk) use ($out) {
+                                        foreach ($chunk as $v) {
+                                            fputcsv($out, [
+                                                $v->firstname, $v->lastname, $v->middlename, $v->gender,
+                                                optional($v->birthdate)->format('Y-m-d'), $v->birthplace,
+                                                $v->service_number, $v->nin, $v->branch, $v->rank,
+                                                $v->phone, $v->email, $v->address,
+                                                $v->status, $v->card_number, $v->card_status,
+                                                optional($v->card_expires_at)->format('Y-m-d'),
+                                            ]);
+                                        }
+                                    });
+
+                                fclose($out);
+                            }, 'veterans-selection.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+                        }),
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),
             ])
             ->headerActions([
-                Tables\Actions\Action::make('import_csv')
-                    ->label('Importer CSV')
-                    ->icon('heroicon-m-arrow-up-tray')
-                    ->form([
-                        Forms\Components\FileUpload::make('csv')
-                            ->label('Fichier CSV')
-                            ->acceptedFileTypes(['text/csv', '.csv', 'text/plain'])
-                            ->required()
-                            ->disk('local')
-                            ->directory('tmp') // storage/app/tmp
-                            ->visibility('private'),
-                    ])
-                    ->action(function (array $data) {
-                        $path = Storage::disk('local')->path($data['csv']);
-                        $csv  = Reader::createFromPath($path, 'r');
-                        $csv->setHeaderOffset(0);
+                ImportAction::make()
+                    ->importer(VeteranImporter::class),
+                ExportAction::make()
+                    ->exporter(VeteranExporter::class) ->formats([
+        ExportFormat::Xlsx,
+        ExportFormat::Csv,
+    ]),
+                // Tables\Actions\Action::make('import_csv')
+                //     ->label('Importer CSV')
+                //     ->icon('heroicon-m-arrow-up-tray')
+                //     ->form([
+                //         Forms\Components\FileUpload::make('csv')
+                //             ->label('Fichier CSV')
+                //             ->acceptedFileTypes(['text/csv', '.csv', 'text/plain'])
+                //             ->required()
+                //             ->disk('local')    // storage/app
+                //             ->directory('tmp') // storage/app/tmp
+                //             ->visibility('private')
+                //             ->preserveFilenames() // utile pour déboguer
+                //             ->helperText('Colonnes attendues : firstname, lastname, middlename, gender, birthdate (YYYY-MM-DD), birthplace, service_number, nin, branch, rank, phone, email, address, status (draft/recognized/suspended/deceased), card_number, card_status (active/revoked/lost), card_expires_at (YYYY-MM-DD)'),
+                //     ])
+                //     ->action(function (array $data) {
+                //         $path = Storage::disk('local')->path($data['csv']);
 
-                        foreach ($csv->getRecords() as $r) {
-                            \App\Models\Veteran::updateOrCreate(
-                                ['service_number' => $r['service_number'] ?? null],
-                                [
-                                    'firstname'       => $r['firstname'] ?? null,
-                                    'lastname'        => $r['lastname'] ?? null,
-                                    'birthdate'       => $r['birthdate'] ?? null, // YYYY-mm-dd
-                                    'gender'          => $r['gender'] ?? null,
-                                    'phone'           => $r['phone'] ?? null,
-                                    'email'           => $r['email'] ?? null,
-                                    'address'         => $r['address'] ?? null,
-                                    'branch'          => $r['branch'] ?? null,
-                                    'rank'            => $r['rank'] ?? null,
-                                    'status'          => $r['status'] ?? 'recognized',
-                                    'card_number'     => $r['card_number'] ?? null,
-                                    'card_expires_at' => $r['card_expires_at'] ?? null,
-                                    'card_status'     => $r['card_status'] ?? null,
-                                ]
-                            );
-                        }
+                //         // Helpers
+                //         $parseDate = function ($val) {
+                //             if ($val === null || $val === '') {
+                //                 return null;
+                //             }
 
-                        Storage::disk('local')->delete($data['csv']);
+                //             try {return Carbon::parse($val);} catch (\Throwable) {return null;}
+                //         };
+                //         $normalizePhone = function (?string $s) {
+                //             if (! $s) {
+                //                 return null;
+                //             }
 
-                        Notification::make()
-                            ->title('Import CSV terminé')
-                            ->success()
-                            ->send();
-                    }),
+                //             $s = preg_replace('/\D+/', '', $s);
+                //             if (Str::startsWith($s, '0')) {
+                //                 $s = '243' . substr($s, 1);
+                //             }
+
+                //             if (! Str::startsWith($s, '243')) {
+                //                 $s = '243' . $s;
+                //             }
+
+                //             return '+' . $s;
+                //         };
+                //         // Mappings FR/variantes => codes internes
+                //         $mapStatus = function (?string $s) {
+                //             $s = Str::lower(trim((string) $s));
+                //             return match ($s) {
+                //                 'reconnu', 'reconue', 'recognized' => 'recognized',
+                //                 'brouillon', 'draft'    => 'draft',
+                //                 'suspendu', 'suspended' => 'suspended',
+                //                 'decede', 'décédé', 'deceased'     => 'deceased',
+                //                 default => 'recognized',
+                //             };
+                //         };
+                //         $mapCard = function (?string $s) {
+                //             $s = Str::lower(trim((string) $s));
+                //             return match ($s) {
+                //                 'actif', 'active'       => 'active',
+                //                 'revoquee', 'révoquée', 'revoked'  => 'revoked',
+                //                 'perdue', 'lost'        => 'lost',
+                //                 default => 'active',
+                //             };
+                //         };
+
+                //         $created = 0; $updated = 0; $skipped = 0; $errors = [];
+
+                //         // Lecture CSV (header à la 1ère ligne)
+                //         $csv = Reader::createFromPath($path, 'r');
+                //         $csv->setHeaderOffset(0);
+                //         foreach ($csv->getRecords() as $rowIndex => $r) {
+                //             try {
+                //                 $sn = trim($r['service_number'] ?? '');
+                //                 if ($sn === '') {
+                //                     $skipped++;
+                //                     $errors[] = 'Ligne ' . ($rowIndex + 1) . ': matricule (service_number) manquant.';
+                //                     continue;
+                //                 }
+
+                //                 $attrs = [
+                //                     'firstname'       => $r['firstname'] ?? null,
+                //                     'lastname'        => $r['lastname'] ?? null,
+                //                     'middlename'      => $r['middlename'] ?? null,
+                //                     'gender'          => $r['gender'] ?? null,
+                //                     'birthdate'       => $parseDate($r['birthdate'] ?? null),
+                //                     'birthplace'      => $r['birthplace'] ?? null,
+                //                     'nin'             => $r['nin'] ?? null,
+                //                     'branch'          => $r['branch'] ?? null,
+                //                     'rank'            => $r['rank'] ?? null,
+                //                     'phone'           => $normalizePhone($r['phone'] ?? null),
+                //                     'email'           => $r['email'] ?? null,
+                //                     'address'         => $r['address'] ?? null,
+                //                     'status'          => $mapStatus($r['status'] ?? null),
+                //                     'card_number'     => $r['card_number'] ?? null,
+                //                     'card_status'     => $mapCard($r['card_status'] ?? null),
+                //                     'card_expires_at' => $parseDate($r['card_expires_at'] ?? null),
+                //                 ];
+
+                //                 $v = \App\Models\Veteran::firstOrNew(['service_number' => $sn]);
+                //                 $v->fill($attrs);
+
+                //                 if (! $v->exists) {
+                //                     $v->save();
+                //                     $created++;
+                //                 } else {
+                //                     if ($v->isDirty()) {$updated++;}
+                //                     $v->save();
+                //                 }
+                //             } catch (\Throwable $e) {
+                //                 $skipped++;
+                //                 $errors[] = 'Ligne ' . ($rowIndex + 1) . ': ' . $e->getMessage();
+                //             }
+                //         }
+
+                //         Storage::disk('local')->delete($data['csv']);
+
+                //         $title = "Import CSV terminé — créés: {$created}, mis à jour: {$updated}, ignorés: {$skipped}";
+                //         $notif = Notification::make()->title($title)->success();
+                //         if ($errors) {
+                //             $notif->body(collect($errors)->take(10)->implode("\n") . (count($errors) > 10 ? "\n..." : ''))
+                //                 ->persistent();
+                //         }
+                //         $notif->send();
+                //     }),
+                // Tables\Actions\Action::make('export_all_csv')
+                //     ->label('Exporter tous (CSV)')
+                //     ->icon('heroicon-m-arrow-down-tray')
+                //     ->action(function () {
+                //         $headers = [
+                //             'firstname', 'lastname', 'middlename', 'gender', 'birthdate', 'birthplace',
+                //             'service_number', 'nin', 'branch', 'rank', 'phone', 'email', 'address',
+                //             'status', 'card_number', 'card_status', 'card_expires_at',
+                //         ];
+
+                //         $q = \App\Models\Veteran::query()->orderBy('lastname')->orderBy('firstname');
+
+                //         return response()->streamDownload(function () use ($headers, $q) {
+                //             $out = fopen('php://output', 'w');
+                //             fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF)); // BOM UTF-8
+                //             fputcsv($out, $headers);
+                //             $q->chunk(1000, function ($chunk) use ($out) {
+                //                 foreach ($chunk as $v) {
+                //                     fputcsv($out, [
+                //                         $v->firstname,
+                //                         $v->lastname,
+                //                         $v->middlename,
+                //                         $v->gender,
+                //                         optional($v->birthdate)->format('Y-m-d'),
+                //                         $v->birthplace,
+                //                         $v->service_number,
+                //                         $v->nin,
+                //                         $v->branch,
+                //                         $v->rank,
+                //                         $v->phone,
+                //                         $v->email,
+                //                         $v->address,
+                //                         $v->status,
+                //                         $v->card_number,
+                //                         $v->card_status,
+                //                         optional($v->card_expires_at)->format('Y-m-d'),
+                //                     ]);
+                //                 }
+                //             });
+                //             fclose($out);
+                //         }, 'veterans.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+                //     }),
             ]);
     }
 
@@ -361,9 +674,10 @@ class VeteranResource extends Resource
     public static function getRelations(): array
     {
         return [
-            VeteranCasesRelationManager::class,
-            VeteranPaymentsRelationManager::class,
-            StatusHistoryRelationManager::class, // <—
+            // VeteranCasesRelationManager::class,
+            // VeteranPaymentsRelationManager::class,
+            // StatusHistoryRelationManager::class, // <—
+            PaymentsRelationManager::class,
         ];
     }
 

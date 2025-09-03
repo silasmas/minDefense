@@ -8,27 +8,18 @@ use Filament\Tables\Table;
 
 class StatusHistoryRelationManager extends RelationManager
 {
-    protected static string $relationship = 'statusHistories';
+    protected static string $relationship = 'statusHistory';
     protected static ?string $title = 'Historique de statuts';
 
     public function table(Table $table): Table
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('case.case_number')->label('Dossier')->searchable(),
-                Tables\Columns\BadgeColumn::make('status')->label('Statut')->colors([
-                    'warning' => 'draft',
-                    'info'    => 'submitted',
-                    'gray'    => 'under_review',
-                    'success' => 'approved',
-                    'danger'  => 'rejected',
-                    'secondary' => 'closed',
-                ]),
-                Tables\Columns\TextColumn::make('set_at')->label('Quand')->dateTime(),
-                Tables\Columns\TextColumn::make('comment')->label('Commentaire')->wrap(),
+                Tables\Columns\TextColumn::make('set_at')->label('Date')->dateTime('d/m/Y H:i')->sortable(),
+                Tables\Columns\TextColumn::make('status')->label('Statut')->badge(),
+                Tables\Columns\TextColumn::make('user.name')->label('Par'),
+                Tables\Columns\TextColumn::make('comment')->label('Commentaire')->limit(60),
             ])
-            ->defaultSort('set_at', 'desc')
-            ->paginated([10,25,50])
-            ->emptyStateHeading('Aucun historique');
+            ->defaultSort('set_at', 'desc');
     }
 }
