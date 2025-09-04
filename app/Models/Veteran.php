@@ -37,7 +37,7 @@ class Veteran extends Model
 
     public function payments()
     {
-        return $this->hasMany(VeteranPayment::class)->orderByDesc('period_month');
+        return $this->hasMany(VeteranPayment::class, 'veteran_id')->orderByDesc('period_month');;
     }
 
     // ----- Helpers

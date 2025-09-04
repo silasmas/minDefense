@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class CaseStatusHistory extends Model
 {
-    use HasFactory,SoftDeletes;
+    use HasFactory;
     protected $table = 'case_status_history';
     protected $fillable = [
         'case_id','status','set_by_user_id','set_at','comment',

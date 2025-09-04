@@ -1,28 +1,29 @@
 <?php
 namespace App\Filament\Resources;
 
-use Carbon\Carbon;
-use Filament\Forms;
-use Filament\Tables;
-use App\Models\Veteran;
-use Filament\Infolists;
-use Filament\Forms\Form;
-use Filament\Tables\Table;
-use Barryvdh\DomPDF\Facade\Pdf;
-use Filament\Infolists\Infolist;
-use Filament\Resources\Resource;
-use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\App;
-use Filament\Tables\Actions\BulkAction;
-use Filament\Notifications\Notification;
 use App\Filament\Exports\VeteranExporter;
 use App\Filament\Imports\VeteranImporter;
-use Filament\Tables\Actions\ExportAction;
-use Filament\Tables\Actions\ImportAction;
-use Illuminate\Database\Eloquent\Builder;
-use Filament\Actions\Exports\Enums\ExportFormat;
 use App\Filament\Resources\VeteranResource\Pages;
 use App\Filament\Resources\VeteranResource\RelationManagers\PaymentsRelationManager;
+use App\Models\Veteran;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\Carbon;
+use Filament\Actions\Exports\Enums\ExportFormat;
+use Filament\Forms;
+use Filament\Forms\Form;
+use Filament\Infolists;
+use Filament\Infolists\Infolist;
+use Filament\Notifications\Notification;
+use Filament\Resources\Resource;
+use Filament\Tables;
+use Filament\Tables\Actions\Action;
+use Filament\Tables\Actions\BulkAction;
+use Filament\Tables\Actions\ExportAction;
+use Filament\Tables\Actions\ImportAction;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\App;
 
 class VeteranResource extends Resource
 {
@@ -221,126 +222,82 @@ class VeteranResource extends Resource
                             ])->default('resume')->required()->native(false),
 
                             Forms\Components\Textarea::make('template')
-                                ->label('Modèle de message')->rows(4)->required()
-                                ->default("Bonjour {prenom} {nom}, votre pension de {mois} est de {montant_total} {devise}. {details}")
-                                ->helperText(<<<'HTML'
-Variables : <strong>{prenom}</strong>, <strong>{nom}</strong>, <strong>{mois}</strong>, <strong>{montant_total}</strong>, <strong>{devise}</strong>, <strong>{details}</strong>, <strong>{matricule}</strong>, <strong>{carte}</strong>
-HTML),
+                                ->label('Modèle de message')
+                                ->rows(4)
+                                ->default('Bonjour {prenom} {nom}, votre pension de {mois} est de {montant_total} {devise}. {details}')
+                                ->helperText("Variables: {prenom}, {nom}, {mois}, {montant_total}, {devise}, {details}, {matricule}, {carte}.")
+                                ->required()
+                                ->live(),
+                            // Aperçu dynamique minimal (sans besoin du bouton)
+                            Forms\Components\Placeholder::make('preview_note')
+                                ->label('Note')
+                                ->content('Utilisez “Prévisualiser” pour voir un exemple sur le 1er vétéran sélectionné.'),
                         ])
-
-                    /* ---------- BOUTON : PRÉVISUALISER (ne fait qu’afficher un aperçu) ---------- */
                         ->extraModalFooterActions([
-                            Tables\Actions\Action::make('preview')
+                            Action::make('preview')
                                 ->label('Prévisualiser')
-                                ->icon('heroicon-m-eye')
                                 ->color('gray')
-                                ->action(function(Collection$records,array$data){
-
-                                    /* helpers pour rendu + métriques SMS */
-                                    $fmtMoney=fn(float$n)=>number_format($n,0,' ',' ');
-
-                                    $render = function (string $tpl, array $ctx): string {
-                                        return preg_replace_callback('/\{(\w+)\}/', function ($m) use ($ctx) {
-                                            $k = $m[1];
-                                            return array_key_exists($k, $ctx) ? (string) $ctx[$k] : $m[0];
-                                        }, $tpl);
-                                    };
-
-                                    // Détection GSM-7 / UCS-2 + calcul segments
-                                    $isGsm7 = function (string $text) {
-                                        $gsm     = "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
-                                        $ext     = "^{}\\[~]|€";
-                                        $allowed = $gsm . $ext;
-                                        // Tous les caractères doivent appartenir au set autorisé (ou être \n \r)
-                                        $len = mb_strlen($text, 'UTF-8');
-                                        for ($i = 0; $i < $len; $i++) {
-                                            $ch = mb_substr($text, $i, 1, 'UTF-8');
-                                            if (! str_contains($allowed, $ch)) {
-                                                return false;
-                                            }
-                                        }
-                                        return true;
-                                    };
-
-                                    $smsMetrics = function (string $text) use ($isGsm7) {
-                                        $extChars = ['^', '{', '}', '\\', '[', '~', ']', '|', '€']; // comptent 2 septets en GSM7
-                                        if ($isGsm7($text)) {
-                                            $len = 0;
-                                            $L   = mb_strlen($text, 'UTF-8');
-                                            for ($i = 0; $i < $L; $i++) {
-                                                $ch = mb_substr($text, $i, 1, 'UTF-8');
-                                                $len += in_array($ch, $extChars, true) ? 2 : 1; // septets
-                                            }
-                                            $segments = $len <= 160 ? 1 : (int) ceil($len / 153);
-                                            return ['GSM-7', $L, $segments]; // on retourne nb de caractères “visibles” + segments
-                                        } else {
-                                            $L        = mb_strlen($text, 'UTF-8'); // UCS-2: 70/67
-                                            $segments = $L <= 70 ? 1 : (int) ceil($L / 67);
-                                            return ['UCS-2', $L, $segments];
-                                        }
-                                    };
-
-                                    /* ---- enregistrements sélectionnés & vérifs ---- */
-                                    if ($records->isEmpty()) {
-                                        Notification::make()->title('Sélection vide')->danger()->send();
-                                        return;
-                                    }
-                                    if (empty($data['period_month'])) {
-                                        Notification::make()->title('Choisis d’abord le mois')->danger()->send();
-                                        return;
-                                    }
-
-                                    $month = Carbon::parse($data['period_month'])->startOfMonth();
-                                    $mode  = $data['mode'] ?? 'resume';
-                                    $tpl   = trim($data['template'] ?? '');
-
-                                    // On prend le premier vétéran sélectionné comme EXEMPLE
+                                ->action(function (Collection $records, array $data) {
                                     /** @var \App\Models\Veteran|null $vet */
                                     $vet = $records->first();
                                     if (! $vet) {
-                                        Notification::make()->title('Pas de vétéran')->danger()->send();
+                                        Notification::make()->title('Sélection vide')->warning()->send();
                                         return;
                                     }
+                                    $month = Carbon::parse($data['period_month'])->startOfMonth();
 
-                                    // Récupérer ses lignes pour le mois
-                                    $rows = $vet->payments()->whereDate('period_month', $month)->orderBy('period_month')->get();
+                                    // Récupère les lignes du mois
+                                    $rows = $vet->payments()
+                                        ->whereDate('period_month', $month)
+                                        ->orderBy('period_month')
+                                        ->get();
+
                                     if ($rows->isEmpty()) {
-                                        Notification::make()->title("Aucune ligne pour {$month->format('m/Y')}")->warning()->send();
+                                        Notification::make()
+                                            ->title('Aucun paiement')
+                                            ->body('Ce vétéran n’a pas de paiement pour ' . $month->translatedFormat('F Y') . '.')
+                                            ->warning()
+                                            ->send();
                                         return;
                                     }
 
-                                    $cur     = $rows->first()->currency ?? 'CDF';
-                                    $total   = (float) $rows->sum('amount');
-                                    $details = $mode === 'detail'
-                                    ? $rows->map(fn($r) => $fmtMoney((float) $r->amount) . " {$cur}")->implode(' + ')
-                                    : '';
+                                    $currency = $rows->first()->currency ?? 'CDF';
+                                    $msg      = self::renderSmsForVeteran($vet, $rows, $month, $currency, $data['mode'], $data['template']);
 
-                                    $ctx = [
-                                        'prenom'        => $vet->firstname ?? '',
-                                        'nom'           => $vet->lastname ?? '',
-                                        'mois'          => $month->format('m/Y'),
-                                        'montant_total' => $fmtMoney($total),
-                                        'devise'        => $cur,
-                                        'details'       => $details,
-                                        'matricule'     => $vet->service_number ?? '',
-                                        'carte'         => $vet->card_number ?? '',
-                                    ];
-
-                                    $msg                  = $render($tpl, $ctx);
-                                    [$enc, $chars, $segs] = $smsMetrics($msg);
+                                    [$len, $segments] = self::smsLength($msg);
 
                                     Notification::make()
-                                        ->title('Aperçu SMS')
-                                        ->body(
-                                            "Vers: {$vet->phone}\n\n" .
-                                            $msg . "\n\n" .
-                                            "Compteur: {$chars} caractères — {$segs} SMS ({$enc})"
-                                        )
-                                        ->persistent()
-                                        ->success()
+                                        ->title('Aperçu')
+                                        ->body($msg . "\n\n(" . $len . " caractères, ~" . $segments . " SMS)")
                                         ->send();
                                 }),
                         ])
+                        ->action(function (Collection $records, array $data) {
+                            $month = Carbon::parse($data['period_month'])->startOfMonth();
+
+                            foreach ($records as $vet) {
+                                /** @var \App\Models\Veteran $vet */
+                                if (! $vet->phone) {
+                                    continue;
+                                }
+
+                                $rows = $vet->payments()
+                                    ->whereDate('period_month', $month)
+                                    ->orderBy('period_month')
+                                    ->get();
+
+                                if ($rows->isEmpty()) {
+                                    continue;
+                                }
+
+                                $cur = $rows->first()->currency ?? 'CDF';
+                                $msg = self::renderSmsForVeteran($vet, $rows, $month, $cur, $data['mode'], $data['template']);
+
+                                app(\App\Services\SmsSender::class)->send($vet->phone, $msg);
+                            }
+
+                            Notification::make()->title('SMS envoi en cours')->success()->send();
+                        })
 
                     /* ---------- ENVOI EFFECTIF ---------- */
                         ->action(function (Collection $records, array $data) {
@@ -441,10 +398,10 @@ HTML),
                 ImportAction::make()
                     ->importer(VeteranImporter::class),
                 ExportAction::make()
-                    ->exporter(VeteranExporter::class) ->formats([
-        ExportFormat::Xlsx,
-        ExportFormat::Csv,
-    ]),
+                    ->exporter(VeteranExporter::class)->formats([
+                    ExportFormat::Xlsx,
+                    ExportFormat::Csv,
+                ]),
                 // Tables\Actions\Action::make('import_csv')
                 //     ->label('Importer CSV')
                 //     ->icon('heroicon-m-arrow-up-tray')
@@ -620,57 +577,132 @@ HTML),
             'edit'   => Pages\EditVeteran::route('/{record}/edit'),
         ];
     }
+/**
+ * Rendu du SMS avec variables.
+ */
+    protected static function renderSmsForVeteran(
+        \App\Models\Veteran $vet,
+        \Illuminate\Support\Collection $rows,
+        Carbon $month,
+        string $currency,
+        string $mode,
+        string $template
+    ): string {
+        $total = (float) $rows->sum('amount');
 
+        $details = '';
+        if ($mode === 'detail') {
+            // ex: 120 000 + 250 000 + 180 000 (CDF)
+            $details = $rows
+                ->map(fn($r) => number_format((float) $r->amount, 0, ' ', ' '))
+                ->implode(' + ')
+                . ' ' . $currency;
+        }
+
+        $tokens = [
+            '{prenom}'        => $vet->firstname ?? '',
+            '{nom}'           => $vet->lastname ?? '',
+            '{mois}'          => $month->translatedFormat('F Y'),
+            '{montant_total}' => number_format($total, 0, ' ', ' '),
+            '{devise}'        => $currency,
+            '{details}'       => $details,
+            '{matricule}'     => $vet->service_number ?? '',
+            '{carte}'         => $vet->card_number ?? '',
+        ];
+
+        $msg = strtr($template, $tokens);
+
+        // Nettoyage simple des doubles espaces/trous
+        $msg = trim(preg_replace('/\s+/', ' ', $msg));
+
+        return $msg;
+    }
+
+/**
+ * Compte caractères et segments SMS (approx GSM-7/UCS-2).
+ */
+    protected static function smsLength(string $text): array
+    {
+        // Détection rapide d’Unicode hors GSM-7
+        $gsm7  = '/^[\r\n @£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞ^{}\\\[~\]|€A-Za-z0-9!"#%&\'()*+,\-.\/:;<=>?]*$/u';
+        $isGsm = (bool) preg_match($gsm7, $text);
+
+        $len = mb_strlen($text, 'UTF-8');
+        if ($isGsm) {
+            // 160 pour 1 SMS, 153 si concaténé
+            $per = $len <= 160 ? 160 : 153;
+        } else {
+            // UCS-2 : 70 / 67
+            $per = $len <= 70 ? 70 : 67;
+        }
+        $segments = (int) ceil($len / $per);
+
+        return [$len, $segments];
+    }
     public static function getGloballySearchableAttributes(): array
     {
         return ['lastname', 'firstname', 'service_number', 'nin', 'phone', 'email'];
     }
 
-    public static function infolist(Infolist $infolist): Infolist
-    {
-        return $infolist->schema([
-            Infolists\Components\Section::make('Profil')
-                ->columns(4)
-                ->schema([
-                    Infolists\Components\ImageEntry::make('photo_path')
-                        ->disk(fn($record) => $record->photo_disk ?? 'public')
-                        ->circular()
-                        ->columnSpan(1),
-                    Infolists\Components\TextEntry::make('full_name')
-                        ->label('Nom complet')->columnSpan(3)->weight('bold')->size('lg'),
-                    Infolists\Components\TextEntry::make('service_number')->label('Matricule'),
-                    Infolists\Components\TextEntry::make('nin')->label('NIN'),
-                    Infolists\Components\TextEntry::make('branch')->label('Branche'),
-                    Infolists\Components\TextEntry::make('rank')->label('Grade'),
+public static function infolist(Infolist $infolist): Infolist
+{
+    return $infolist->schema([
+        Infolists\Components\Section::make('Profil')
+            ->columns(4)
+            ->schema([
+                Infolists\Components\ImageEntry::make('photo_path')
+                    ->disk(fn($record) => $record->photo_disk ?? 'public')
+                    ->circular()
+                    ->columnSpan(1),
 
-                ]),
-            Infolists\Components\Section::make('Résumé')
-                ->columns(2)
-                ->schema([
-                    // 5 derniers statuts (toutes affaires confondues)
-                    Infolists\Components\ViewEntry::make('last_statuses')
-                        ->view('infolists.veteran-last-statuses')
-                        ->state(fn(\App\Models\Veteran $r) =>
-                            \App\Models\CaseStatusHistory::with('case')
-                                ->whereHas('case', fn($q) => $q->where('veteran_id', $r->id))
-                                ->orderByDesc('set_at')
-                                ->limit(10)
-                                ->get()
-                        ),
+                Infolists\Components\TextEntry::make('full_name')
+                    ->label('Nom complet')
+                    ->columnSpan(3)
+                    ->weight('bold')
+                    ->size('lg'),
 
-                    // 6 derniers paiements
-                    Infolists\Components\ViewEntry::make('last_payments')
-                        ->view('infolists.veteran-last-payments')
-                        ->state(fn(Veteran $r) => $r->payments()
-                                ->orderByDesc('paid_at')
-                                ->orderByDesc('id')
-                                ->limit(6)
-                                ->get()
-                        ),
-                ]),
+                Infolists\Components\TextEntry::make('service_number')->label('Matricule'),
+                Infolists\Components\TextEntry::make('nin')->label('NIN'),
+                Infolists\Components\TextEntry::make('branch')->label('Branche'),
+                Infolists\Components\TextEntry::make('rank')->label('Grade'),
+            ]),
 
-        ]);
-    }
+        Infolists\Components\Section::make('Résumé')
+            ->columns(2)
+            ->schema([
+                // 10 derniers statuts (via relation Case si c'est votre schéma)
+                Infolists\Components\ViewEntry::make('last_statuses')
+                    ->label('')
+                    ->view('infolists.veteran-last-statuses')
+                    ->state(function (\App\Models\Veteran $r) {
+                        // OPTION 1: historique direct (si table a veteran_id)
+                        // return \App\Models\CaseStatusHistory::where('veteran_id', $r->id)
+                        //     ->orderByDesc('set_at')->limit(10)->get();
+
+                        // OPTION 2: via "case" (si table a case_id)
+                        return \App\Models\CaseStatusHistory::with('case')
+                            ->whereHas('case', fn($q) => $q->where('veteran_id', $r->id))
+                            ->orderByDesc('set_at')
+                            ->limit(10)
+                            ->get();
+                    }),
+
+                // 6 derniers paiements
+                Infolists\Components\ViewEntry::make('last_payments')
+                    ->label('')
+                    ->view('infolists.veteran-last-payments')
+                    ->state(fn(\App\Models\Veteran $r) =>
+                        $r->payments()
+                            ->orderByDesc('paid_at')
+                            ->orderByDesc('id')
+                            ->limit(6)
+                            ->get()
+                    ),
+            ]),
+    ]);
+}
+
+
     public static function getRelations(): array
     {
         return [
