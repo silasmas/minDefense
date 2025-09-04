@@ -648,23 +648,38 @@ public static function infolist(Infolist $infolist): Infolist
 {
     return $infolist->schema([
         Infolists\Components\Section::make('Profil')
-            ->columns(4)
+            ->columns(12)
             ->schema([
                 Infolists\Components\ImageEntry::make('photo_path')
+                ->label('Photo')
                     ->disk(fn($record) => $record->photo_disk ?? 'public')
                     ->circular()
-                    ->columnSpan(1),
+                    ->columnSpan(3),
 
                 Infolists\Components\TextEntry::make('full_name')
                     ->label('Nom complet')
                     ->columnSpan(3)
                     ->weight('bold')
                     ->size('lg'),
+                Infolists\Components\TextEntry::make('status')
+                    ->label('Status')
+                    ->columnSpan(3)
+                    ->weight('bold')
+                    ->size('lg'),
+                Infolists\Components\TextEntry::make('card_status')
+                    ->label('Status card')
+                    ->columnSpan(3)
+                    ->weight('bold')
+                    ->size('lg'),
 
-                Infolists\Components\TextEntry::make('service_number')->label('Matricule'),
-                Infolists\Components\TextEntry::make('nin')->label('NIN'),
-                Infolists\Components\TextEntry::make('branch')->label('Branche'),
-                Infolists\Components\TextEntry::make('rank')->label('Grade'),
+                Infolists\Components\TextEntry::make('service_number')
+                ->columnSpan(3)->label('Matricule'),
+                Infolists\Components\TextEntry::make('nin')
+                ->columnSpan(3)->label('NIN'),
+                Infolists\Components\TextEntry::make('branch')
+                ->columnSpan(3)->label('Branche'),
+                Infolists\Components\TextEntry::make('rank')
+                ->columnSpan(3)->label('Grade'),
             ]),
 
         Infolists\Components\Section::make('Résumé')
