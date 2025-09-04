@@ -5,6 +5,7 @@ use App\Filament\Exports\VeteranExporter;
 use App\Filament\Imports\VeteranImporter;
 use App\Filament\Resources\VeteranResource\Pages;
 use App\Filament\Resources\VeteranResource\RelationManagers\PaymentsRelationManager;
+use App\Filament\Resources\VeteranResource\RelationManagers\VeteranPaymentsRelationManager;
 use App\Models\Veteran;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
@@ -644,88 +645,97 @@ class VeteranResource extends Resource
         return ['lastname', 'firstname', 'service_number', 'nin', 'phone', 'email'];
     }
 
-public static function infolist(Infolist $infolist): Infolist
-{
-    return $infolist->schema([
-        Infolists\Components\Section::make('Profil')
-            ->columns(12)
-            ->schema([
-                Infolists\Components\ImageEntry::make('photo_path')
-                ->label('Photo')
-                    ->disk(fn($record) => $record->photo_disk ?? 'public')
-                    ->circular()
-                    ->columnSpan(3),
+    public static function infolist(Infolist $infolist): Infolist
+    {
+        return $infolist->schema([
+            Infolists\Components\Section::make('Profil')
+                ->columns(12)
+                ->schema([
+                    Infolists\Components\ImageEntry::make('photo_path')
+                        ->label('Photo')
+                        ->disk(fn($record) => $record->photo_disk ?? 'public')
+                        ->circular()
+                        ->columnSpan(3),
 
-                Infolists\Components\TextEntry::make('full_name')
-                    ->label('Nom complet')
-                    ->columnSpan(3)
-                    ->weight('bold')
-                    ->size('lg'),
-                Infolists\Components\TextEntry::make('status')
-                    ->label('Status')
-                    ->columnSpan(3)
-                    ->weight('bold')
-                    ->size('lg'),
-                Infolists\Components\TextEntry::make('card_status')
-                    ->label('Status card')
-                    ->columnSpan(3)
-                    ->weight('bold')
-                    ->size('lg'),
+                    Infolists\Components\TextEntry::make('full_name')
+                        ->label('Nom complet')
+                        ->columnSpan(3)
+                        ->weight('bold')
+                        ->size('lg'),
+                    Infolists\Components\TextEntry::make('status')
+                        ->label('Status')
+                        ->columnSpan(3)
+                        ->weight('bold')
+                        ->size('lg'),
+                    Infolists\Components\TextEntry::make('card_status')
+                        ->label('Status card')
+                        ->columnSpan(3)
+                        ->weight('bold')
+                        ->size('lg'),
 
-                Infolists\Components\TextEntry::make('service_number')
-                ->columnSpan(3)->label('Matricule'),
-                Infolists\Components\TextEntry::make('nin')
-                ->columnSpan(3)->label('NIN'),
-                Infolists\Components\TextEntry::make('branch')
-                ->columnSpan(3)->label('Branche'),
-                Infolists\Components\TextEntry::make('rank')
-                ->columnSpan(3)->label('Grade'),
-            ]),
+                    Infolists\Components\TextEntry::make('service_number')
+                        ->columnSpan(3)->label('Matricule'),
+                    Infolists\Components\TextEntry::make('nin')
+                        ->columnSpan(3)->label('NIN'),
+                    Infolists\Components\TextEntry::make('branch')
+                        ->columnSpan(3)->label('Branche'),
+                    Infolists\Components\TextEntry::make('rank')
+                        ->columnSpan(3)->label('Grade'),
+                ]),
 
-        Infolists\Components\Section::make('Résumé')
-            ->columns(2)
-            ->schema([
-                // 10 derniers statuts (via relation Case si c'est votre schéma)
-                Infolists\Components\ViewEntry::make('last_statuses')
-                    ->label('')
-                    ->view('infolists.veteran-last-statuses')
-                    ->state(function (\App\Models\Veteran $r) {
-                        // OPTION 1: historique direct (si table a veteran_id)
-                        // return \App\Models\CaseStatusHistory::where('veteran_id', $r->id)
-                        //     ->orderByDesc('set_at')->limit(10)->get();
+            Infolists\Components\Section::make('Résumé')
+                ->columns(2)
+                ->schema([
+                    // 10 derniers statuts (via relation Case si c'est votre schéma)
+                    Infolists\Components\ViewEntry::make('last_statuses')
+                        ->label('')
+                        ->view('infolists.veteran-last-statuses')
+                        ->state(function (\App\Models\Veteran $r) {
+                            // OPTION 1: historique direct (si table a veteran_id)
+                            // return \App\Models\CaseStatusHistory::where('veteran_id', $r->id)
+                            //     ->orderByDesc('set_at')->limit(10)->get();
 
-                        // OPTION 2: via "case" (si table a case_id)
-                        return \App\Models\CaseStatusHistory::with('case')
-                            ->whereHas('case', fn($q) => $q->where('veteran_id', $r->id))
-                            ->orderByDesc('set_at')
-                            ->limit(10)
-                            ->get();
-                    }),
+                            // OPTION 2: via "case" (si table a case_id)
+                            return \App\Models\CaseStatusHistory::with('case')
+                                ->whereHas('case', fn($q) => $q->where('veteran_id', $r->id))
+                                ->orderByDesc('set_at')
+                                ->limit(10)
+                                ->get();
+                        }),
 
-                // 6 derniers paiements
-                Infolists\Components\ViewEntry::make('last_payments')
-                    ->label('')
-                    ->view('infolists.veteran-last-payments')
-                    ->state(fn(\App\Models\Veteran $r) =>
-                        $r->payments()
-                            ->orderByDesc('paid_at')
-                            ->orderByDesc('id')
-                            ->limit(6)
-                            ->get()
-                    ),
-            ]),
-    ]);
-}
+                    // 6 derniers paiements
+                    Infolists\Components\ViewEntry::make('last_payments')
+                        ->label('')
+                        ->view('infolists.veteran-last-payments')
+                        ->state(fn(\App\Models\Veteran $r) =>
+                            $r->payments()
+                                ->orderByDesc('paid_at')
+                                ->orderByDesc('id')
+                                ->limit(6)
+                                ->get()
+                        ),
+                    Infolists\Components\ViewEntry::make('scheduled_next')
+                        ->label('Programmés (prochains)')
+                        ->view('infolists.veteran-scheduled-mini')
+                        ->state(fn(\App\Models\Veteran $r) =>
+                            $r->payments()->where('status', 'scheduled')->orderBy('paid_at')->limit(5)->get()
+                        ),
 
+                ]),
+        ]);
+    }
 
     public static function getRelations(): array
     {
         return [
             // VeteranCasesRelationManager::class,
-            // VeteranPaymentsRelationManager::class,
+            VeteranPaymentsRelationManager::class,
             // StatusHistoryRelationManager::class, // <—
             PaymentsRelationManager::class,
         ];
     }
-
+public static function canViewForRecord($ownerRecord, string $pageClass): bool
+{
+    return true; // à enlever ensuite
+}
 }
