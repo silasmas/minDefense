@@ -50,3 +50,6 @@ Route::get('/admin/veterans/{veteran}/card/preview', [VeteranController::class,'
     ->name('veterans.card.preview');
 Route::get('/admin/veterans/{veteran}/card/duplex', [VeteranController::class,'duplex'])
     ->name('veterans.card.duplex');
+Route::get('/symlink', function () {
+    return view('symlink');
+})->name('generate_symlink');
