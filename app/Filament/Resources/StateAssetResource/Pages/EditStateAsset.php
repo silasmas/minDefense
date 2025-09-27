@@ -17,4 +17,13 @@ class EditStateAsset extends EditRecord
             Actions\DeleteAction::make(),
         ];
     }
+    // App\Filament\Resources\StateAssetResource\Pages\EditStateAsset.php
+protected function mutateFormDataBeforeSave(array $data): array
+{
+    $data['asset_code'] = strtoupper(trim($data['asset_code']));
+    $data['lat'] = $data['lat'] === '' ? null : (float) $data['lat'];
+    $data['lng'] = $data['lng'] === '' ? null : (float) $data['lng'];
+    return $data;
+}
+
 }

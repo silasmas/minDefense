@@ -1,30 +1,29 @@
 <?php
 
-
 // app/Filament/Resources/VeteranPaymentResource.php
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\VeteranPaymentResource\Pages;
-use App\Models\VeteranPayment;
 use App\Models\Veteran;
+use App\Models\VeteranPayment;
+use Carbon\Carbon;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
 use Filament\Forms\Set;
 use Filament\Resources\Resource;
 use Filament\Tables;
-use Filament\Tables\Table;
-use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\IconColumn;
+use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TrashedFilter;
+use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Validation\Rule;
-use Carbon\Carbon;
 
 class VeteranPaymentResource extends Resource
 {
-      protected static ?string $model = VeteranPayment::class; // ✅ obligatoire
+    protected static ?string $model = VeteranPayment::class; // ✅ obligatoire
 
     public static function getEloquentQuery(): Builder
     {
@@ -35,19 +34,19 @@ class VeteranPaymentResource extends Resource
     protected static ?string $navigationIcon  = 'heroicon-o-currency-dollar';
     protected static ?string $navigationLabel = 'Paiements vétérans';
     protected static ?string $navigationGroup = 'Vétérans';
-    protected static ?int    $navigationSort  = 20;
+    protected static ?int $navigationSort     = 20;
 
     public static function form(Form $form): Form
     {
         return $form->schema([
             // == LIEN AU VÉTÉRAN ==
             Forms\Components\Select::make('veteran_id')
-                ->label('Vétéran')                          // FK -> veterans.id
-                ->relationship(name: 'veteran', titleAttribute: 'lastname') // base pour la recherche
+                ->label('Vétéran')
+                ->relationship(name: 'veteran', titleAttribute: 'lastname')
                 ->getOptionLabelFromRecordUsing(function (Veteran $v) {
-                    // Affiche "Nom Prénom (Matricule)" si dispo
-                    $mat = $v->service_number ? " ({$v->service_number})" : '';
-                    return trim(($v->full_name ?? ($v->lastname.' '.$v->firstname)).$mat);
+                    $full = trim(($v->full_name ?? ($v->lastname . ' ' . $v->firstname)));
+                    $mat  = $v->service_number ? " ({$v->service_number})" : '';
+                    return $full . $mat;
                 })
                 ->searchable()
                 ->preload()
@@ -56,8 +55,8 @@ class VeteranPaymentResource extends Resource
 
             // == (OPTIONNEL) LIEN À UN DOSSIER/CASE ==
             Forms\Components\Select::make('case_id')
-                ->label('Dossier (optionnel)')              // FK -> veteran_cases.id
-                ->relationship('case', 'id')                // on affiche l’ID si tu n’as pas de champ "title"
+                ->label('Dossier (optionnel)')
+                ->relationship('case', 'id')
                 ->searchable()
                 ->preload()
                 ->nullable()
@@ -65,7 +64,7 @@ class VeteranPaymentResource extends Resource
 
             // == TYPE DE PAIEMENT ==
             Forms\Components\Select::make('payment_type')
-                ->label('Type de paiement')                 // enum: pension | arrears | aid
+                ->label('Type de paiement')
                 ->options([
                     'pension' => 'Pension',
                     'arrears' => 'Arriéré',
@@ -77,49 +76,59 @@ class VeteranPaymentResource extends Resource
 
             // == PÉRIODE (MENSUELLE OU INTERVALLE) ==
             Forms\Components\DatePicker::make('period_month')
-                ->label('Mois de référence')                // date (ex: 2025-08-01)
-                ->native(false)                             // meilleur UX (calendrier web)
+                ->label('Mois de référence')
+                ->native(false)
                 ->closeOnDateSelection()
+                ->required()
+                ->helperText('Pour les pensions mensuelles : la date sera enregistrée au 1er jour du mois.')
                 ->afterStateUpdated(function (Set $set, $state) {
-                    // Force au 1er jour du mois, pour respecter ton design "YYYY-MM-01"
-                    if ($state) {
-                        $set('period_month', Carbon::parse($state)->startOfMonth()->toDateString());
-                    }
+                    $set('period_month', $state ? Carbon::parse($state)->startOfMonth()->toDateString() : null);
                 })
-                ->helperText('Pour les pensions mensuelles: un jour au choix, il sera enregistré au 1er du mois.'),
+                // --- Unicité composite: veteran_id + payment_type + period_month
+                ->unique(
+                    table: 'veteran_payments',
+                    column: 'period_month',
+                    ignorable: fn(?VeteranPayment $record)      => $record, // ignore en édition
+                    modifyRuleUsing: fn(Unique $rule, Get $get) =>
+                    $rule->where('veteran_id', $get('veteran_id'))
+                        ->where('payment_type', $get('payment_type'))
+                ),
 
-            Forms\Components\Grid::make()
-                ->columns(2)
-                ->schema([
-                    Forms\Components\DatePicker::make('period_start')
-                        ->label('Début de période')         // date
-                        ->helperText('Optionnel — utile pour les aides/arriérés couvrant un intervalle.'),
-                    Forms\Components\DatePicker::make('period_end')
-                        ->label('Fin de période')           // date
-                        ->helperText('Optionnel — fin de l’intervalle couvert.'),
-                ]),
+            Forms\Components\Grid::make()->columns(2)->schema([
+                Forms\Components\DatePicker::make('period_start')
+                    ->label('Début de période')
+                    ->helperText('Optionnel — utile pour les aides/arriérés couvrant un intervalle.'),
+
+                Forms\Components\DatePicker::make('period_end')
+                    ->label('Fin de période')
+                    ->helperText('Optionnel — fin de l’intervalle couvert.')
+                    ->rule(fn(Get $get) => function (string $attribute, $value, $fail) use ($get) {
+                        $start = $get('period_start');
+                        if ($start && $value && $value < $start) {
+                            $fail('La fin de période doit être postérieure ou égale au début de période.');
+                        }
+                    }),
+            ]),
 
             // == MONTANT & DEVISE ==
             Forms\Components\TextInput::make('amount')
-                ->label('Montant')                          // decimal(12,2)
+                ->label('Montant')
                 ->numeric()
+                ->minValue(0.01)
                 ->required()
-                ->helperText('Exemple: 150.00'),
+                ->helperText('Exemple : 150.00'),
 
             Forms\Components\Select::make('currency')
-                ->label('Devise')                           // char(3) : USD par défaut
-                ->options([
-                    'USD' => 'USD',
-                    'CDF' => 'CDF',
-                    'EUR' => 'EUR',
-                ])
+                ->label('Devise')
+                ->options(['USD' => 'USD', 'CDF' => 'CDF', 'EUR' => 'EUR'])
                 ->default('USD')
                 ->required()
+                ->native(false)
                 ->helperText('Code devise sur 3 caractères (ISO).'),
 
             // == STATUT & DATE DE PAIEMENT ==
             Forms\Components\Select::make('status')
-                ->label('Statut')                           // enum: scheduled | paid | failed | refunded
+                ->label('Statut')
                 ->options([
                     'scheduled' => 'Planifié',
                     'paid'      => 'Payé',
@@ -129,41 +138,30 @@ class VeteranPaymentResource extends Resource
                 ->default('paid')
                 ->required()
                 ->helperText('État du paiement.'),
+
             Forms\Components\DateTimePicker::make('paid_at')
-                ->label('Payé le')                          // datetime
+                ->label('Payé le')
                 ->seconds(false)
-                ->helperText('Date/heure de paiement effectif (utile si statut = Payé).'),
+                ->helperText('Renseignez la date/heure si le statut est « Payé ».')
+                // Optionnel: forcer la présence de paid_at si Paid
+                ->rule(fn(Get $get) => function (string $attribute, $value, $fail) use ($get) {
+                    if (($get('status') === 'paid') && empty($value)) {
+                        $fail('La date/heure de paiement est requise quand le statut est « Payé ».');
+                    }
+                }),
 
             // == RÉFÉRENCE & NOTES ==
             Forms\Components\TextInput::make('reference')
-                ->label('Référence')                        // index, 128
+                ->label('Référence')
                 ->maxLength(128)
-                ->helperText('Référence bancaire / Mobile Money / pièce comptable.'),
+                ->helperText('Référence bancaire / Mobile Money / pièce comptable. Si vide, elle sera générée automatiquement.'),
+
             Forms\Components\Textarea::make('notes')
-                ->label('Notes')                            // texte libre
+                ->label('Notes')
                 ->rows(3)
                 ->helperText('Informations complémentaires.'),
+        ])->columns(2);
 
-            // == CONTRAINTE D’UNICITÉ MÉTIER (même vétéran + type + mois) ==
-            Forms\Components\Section::make('Validation')
-                ->schema([])
-                ->hidden() // section invisible, juste pour regrouper la règle ci-dessous
-                ->afterValidation(function (Forms\Components\Component $component, Forms\Form $form) {
-                    // Rien ici : on met la règle sur period_month ci-dessous
-                }),
-        ])
-        ->columns(2)
-        // Règle d'unicité appliquée sur period_month, dépendant de veteran_id & payment_type
-        ->rules([
-            'period_month' => [
-                function (Get $get) {
-                    return Rule::unique('veteran_payments', 'period_month')
-                        ->where('veteran_id', $get('veteran_id'))
-                        ->where('payment_type', $get('payment_type'))
-                        ->ignore(request()->route('record')); // ignore lors de l’édition
-                },
-            ],
-        ]);
     }
 
     public static function table(Table $table): Table
@@ -174,17 +172,20 @@ class VeteranPaymentResource extends Resource
                 TextColumn::make('veteran.id')
                     ->label('Vétéran')
                     ->formatStateUsing(function ($state, $record) {
-                        if (! $record->veteran) return '—';
-                        $n = $record->veteran->full_name ?: trim(($record->veteran->lastname ?? '').' '.($record->veteran->firstname ?? ''));
+                        if (! $record->veteran) {
+                            return '—';
+                        }
+
+                        $n = $record->veteran->full_name ?: trim(($record->veteran->lastname ?? '') . ' ' . ($record->veteran->firstname ?? ''));
                         $m = $record->veteran->service_number ? " ({$record->veteran->service_number})" : '';
-                        return trim($n.$m);
+                        return trim($n . $m);
                     })
                     ->searchable(query: function (Builder $query, string $search) {
                         // Recherche sur lastname/firstname/matricule
                         $query->whereHas('veteran', function (Builder $q) use ($search) {
                             $q->where('lastname', 'like', "%{$search}%")
-                              ->orWhere('firstname', 'like', "%{$search}%")
-                              ->orWhere('service_number', 'like', "%{$search}%");
+                                ->orWhere('firstname', 'like', "%{$search}%")
+                                ->orWhere('service_number', 'like', "%{$search}%");
                         });
                     })
                     ->sortable(),
@@ -193,12 +194,12 @@ class VeteranPaymentResource extends Resource
                 TextColumn::make('payment_type')
                     ->label('Type')
                     ->badge()
-                    ->formatStateUsing(fn (string $state) => [
+                    ->formatStateUsing(fn(string $state) => [
                         'pension' => 'Pension',
                         'arrears' => 'Arriéré',
                         'aid'     => 'Aide',
                     ][$state] ?? ucfirst($state))
-                    ->color(fn (string $state) => match ($state) {
+                    ->color(fn(string $state) => match ($state) {
                         'pension' => 'primary',
                         'arrears' => 'warning',
                         'aid'     => 'info',
@@ -225,20 +226,20 @@ class VeteranPaymentResource extends Resource
                 // Montant + devise
                 TextColumn::make('amount')
                     ->label('Montant')
-                    ->formatStateUsing(fn ($state, $record) => number_format((float) $state, 2, ',', ' ').' '.($record->currency ?? ''))
+                    ->formatStateUsing(fn($state, $record) => number_format((float) $state, 2, ',', ' ') . ' ' . ($record->currency ?? ''))
                     ->sortable(),
 
                 // Statut (badge)
                 TextColumn::make('status')
                     ->label('Statut')
                     ->badge()
-                    ->formatStateUsing(fn (string $state) => [
+                    ->formatStateUsing(fn(string $state) => [
                         'scheduled' => 'Planifié',
                         'paid'      => 'Payé',
                         'failed'    => 'Échec',
                         'refunded'  => 'Remboursé',
                     ][$state] ?? ucfirst($state))
-                    ->color(fn (string $state) => match ($state) {
+                    ->color(fn(string $state) => match ($state) {
                         'scheduled' => 'warning',
                         'paid'      => 'success',
                         'failed'    => 'danger',
@@ -265,7 +266,7 @@ class VeteranPaymentResource extends Resource
                 IconColumn::make('has_notes')
                     ->label('Notes')
                     ->boolean()
-                    ->getStateUsing(fn ($record) => filled($record->notes))
+                    ->getStateUsing(fn($record) => filled($record->notes))
                     ->tooltip('Ce paiement contient des notes.'),
             ])
             ->filters([
@@ -297,8 +298,8 @@ class VeteranPaymentResource extends Resource
                     ])
                     ->query(function (Builder $query, array $data) {
                         return $query
-                            ->when($data['from'] ?? null, fn ($q, $v) => $q->whereDate('paid_at', '>=', $v))
-                            ->when($data['to'] ?? null, fn ($q, $v) => $q->whereDate('paid_at', '<=', $v));
+                            ->when($data['from'] ?? null, fn($q, $v) => $q->whereDate('paid_at', '>=', $v))
+                            ->when($data['to'] ?? null, fn($q, $v) => $q->whereDate('paid_at', '<=', $v));
                     }),
             ])
             ->actions([
@@ -309,10 +310,10 @@ class VeteranPaymentResource extends Resource
                     ->label('Marquer payé')
                     ->icon('heroicon-o-check')
                     ->requiresConfirmation()
-                    ->visible(fn ($record) => $record->status !== 'paid')
+                    ->visible(fn($record) => $record->status !== 'paid')
                     ->action(function (VeteranPayment $record) {
                         $record->update([
-                            'status' => 'paid',
+                            'status'  => 'paid',
                             'paid_at' => $record->paid_at ?? now(),
                         ]);
                     }),
@@ -323,8 +324,8 @@ class VeteranPaymentResource extends Resource
                     ->icon('heroicon-o-x-circle')
                     ->color('danger')
                     ->requiresConfirmation()
-                    ->visible(fn ($record) => $record->status !== 'failed')
-                    ->action(fn (VeteranPayment $record) => $record->update(['status' => 'failed'])),
+                    ->visible(fn($record) => $record->status !== 'failed')
+                    ->action(fn(VeteranPayment $record) => $record->update(['status' => 'failed'])),
 
                 // Marquer "Remboursé"
                 Tables\Actions\Action::make('mark_refunded')
@@ -332,8 +333,8 @@ class VeteranPaymentResource extends Resource
                     ->icon('heroicon-o-arrow-uturn-left')
                     ->color('gray')
                     ->requiresConfirmation()
-                    ->visible(fn ($record) => $record->status !== 'refunded')
-                    ->action(fn (VeteranPayment $record) => $record->update(['status' => 'refunded'])),
+                    ->visible(fn($record) => $record->status !== 'refunded')
+                    ->action(fn(VeteranPayment $record) => $record->update(['status' => 'refunded'])),
             ])
             ->bulkActions([
                 Tables\Actions\BulkAction::make('bulk_paid')
@@ -349,22 +350,22 @@ class VeteranPaymentResource extends Resource
                     ->label('Marquer échec')
                     ->color('danger')
                     ->requiresConfirmation()
-                    ->action(fn ($records) => $records->each->update(['status' => 'failed'])),
+                    ->action(fn($records) => $records->each->update(['status' => 'failed'])),
                 Tables\Actions\BulkAction::make('bulk_refunded')
                     ->label('Rembourser')
                     ->color('gray')
                     ->requiresConfirmation()
-                    ->action(fn ($records) => $records->each->update(['status' => 'refunded'])),
+                    ->action(fn($records) => $records->each->update(['status' => 'refunded'])),
                 Tables\Actions\DeleteBulkAction::make(),
                 Tables\Actions\ForceDeleteBulkAction::make(),
                 Tables\Actions\RestoreBulkAction::make(),
             ])
             // Eager load pour éviter N+1 et l’erreur "[$query] unresolvable" (on n’utilise PAS ->query())
             ->modifyQueryUsing(function (Builder $query) {
-    $query->with('veteran');
-    return $query; // ✅ important si tu n’utilises pas une arrow-fn
-});
-            // ->defaultSort('paid_at', 'desc');
+                $query->with('veteran');
+                return $query; // ✅ important si tu n’utilises pas une arrow-fn
+            });
+        // ->defaultSort('paid_at', 'desc');
     }
 
     public static function getPages(): array
