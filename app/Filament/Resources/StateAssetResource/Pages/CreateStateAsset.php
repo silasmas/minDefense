@@ -9,6 +9,7 @@ use Filament\Resources\Pages\CreateRecord;
 class CreateStateAsset extends CreateRecord
 {
     protected static string $resource = StateAssetResource::class;
+    protected ?string $heading = 'Enregistrer un nouveau bien de l’État';
     // App\Filament\Resources\StateAssetResource\Pages\CreateStateAsset.php
 protected function mutateFormDataBeforeCreate(array $data): array
 {
