@@ -69,7 +69,7 @@ class VeteranPaymentsRelationManager extends RelationManager
 
 
                 Tables\Columns\TextColumn::make('paid_at')->label('Payé le')->dateTime(),
-                Tables\Columns\TextColumn::make('reference')->label('Réf.')->limit(18)->tooltip(fn($r) => $r->reference),
+                Tables\Columns\TextColumn::make('reference')->label('Réf.')->limit(18)->tooltip(fn($record) => $record->reference),
             ])
             ->headerActions([
                 Tables\Actions\CreateAction::make(),
@@ -109,13 +109,13 @@ class VeteranPaymentsRelationManager extends RelationManager
 
                         if ($data['mode'] === 'resume') {
                             $total = (float) $rows->sum('amount');
-                            $mois  = $rows->map(fn($r) => \Carbon\Carbon::parse($r->period_month)->format('m/Y'))->unique()->implode(', ');
+                            $mois  = $rows->map(fn($record) => \Carbon\Carbon::parse($record->period_month)->format('m/Y'))->unique()->implode(', ');
                             $msg   = "Pension: total " . number_format($total, 0, ' ', ' ') . " {$currency}. Périodes: {$mois}.";
                         } else {
                             // détail en lignes (peut scinder en 2 SMS si très long, Twilio concatène)
-                            $lines = $rows->map(function ($r) use ($currency) {
-                                $m = \Carbon\Carbon::parse($r->period_month)->format('m/Y');
-                                return "{$m}: " . number_format((float) $r->amount, 0, ' ', ' ') . " {$currency}";
+                            $lines = $rows->map(function ($record) use ($currency) {
+                                $m = \Carbon\Carbon::parse($record->period_month)->format('m/Y');
+                                return "{$m}: " . number_format((float) $record->amount, 0, ' ', ' ') . " {$currency}";
                             })->implode('; ');
                             $msg = "Pension détaillée: {$lines}.";
                         }
@@ -158,12 +158,12 @@ class VeteranPaymentsRelationManager extends RelationManager
 
                             if ($data['mode'] === 'resume') {
                                 $total = (float) $rows->sum('amount');
-                                $mois  = $rows->sortBy('period_month')->map(fn($r) => \Carbon\Carbon::parse($r->period_month)->format('m/Y'))->unique()->implode(', ');
+                                $mois  = $rows->sortBy('period_month')->map(fn($record) => \Carbon\Carbon::parse($record->period_month)->format('m/Y'))->unique()->implode(', ');
                                 $msg   = "Pension: total " . number_format($total, 0, ' ', ' ') . " {$currency}. Périodes: {$mois}.";
                             } else {
-                                $lines = $rows->sortBy('period_month')->map(function ($r) use ($currency) {
-                                    $m = \Carbon\Carbon::parse($r->period_month)->format('m/Y');
-                                    return "{$m}: " . number_format((float) $r->amount, 0, ' ', ' ') . " {$currency}";
+                                $lines = $rows->sortBy('period_month')->map(function ($record) use ($currency) {
+                                    $m = \Carbon\Carbon::parse($record->period_month)->format('m/Y');
+                                    return "{$m}: " . number_format((float) $record->amount, 0, ' ', ' ') . " {$currency}";
                                 })->implode('; ');
                                 $msg = "Pension détaillée: {$lines}.";
                             }

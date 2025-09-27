@@ -34,7 +34,7 @@ return new class extends Migration
             $table->text('notes')->nullable();
 
             $table->timestamps();
-
+$table->softDeletes();
             // Anti-doublon: 1 paiement mensuel par type et par vétéran
             $table->unique(['veteran_id','payment_type','period_month'], 'uq_vet_month_type');
 

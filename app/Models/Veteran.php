@@ -70,4 +70,30 @@ class Veteran extends Model
 
         return Storage::disk($disk)->exists($path) ? $path : null;
     }
+     // ... tes autres relations et use ...
+
+
+
+    /**
+     * Total payé (somme des paiements appliqués)
+     */
+    public function getTotalPaidAttribute(): float
+    {
+        return (float) $this->payments()->where('status', 'applied')->sum('amount');
+    }
+
+    /**
+     * Arriéré = total_due - total_paid
+     * ATTENTION: il faut que tu aies une colonne 'total_due' ou 'debt' sur veteran
+     * si non, adapte en fonction de ton modèle (ex: calcul à partir d'autres champs)
+     */
+    public function getArrearsAttribute(): float
+    {
+        $due = (float) ($this->total_due ?? 0); // adapte le champ si différent
+        return max(0, $due - $this->total_paid);
+    }
+    public function assets()
+{
+    return $this->hasMany(\App\Models\VeteranAsset::class, 'veteran_id');
+}
 }

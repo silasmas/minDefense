@@ -156,6 +156,38 @@ class VeteranResource extends Resource
                         });
                     })
                     ->sortable(),
+                Tables\Columns\TextColumn::make('due_amount')
+                    ->label('À payer')
+                    ->alignRight()
+                    ->state(function (\App\Models\Veteran $r) {
+                        $params = session('veterans.to_pay_filters');
+                        if (! $params) {
+                            return null;
+                        }
+
+                        $month = Carbon::parse($params['month'])->startOfMonth();
+                        $type  = $params['type'];
+                        $q     = $r->payments()
+                            ->where('status', 'scheduled')
+                            ->where('payment_type', $type)
+                            ->where('period_month', $month);
+
+                        if ($params['onlyDue'] ?? true) {
+                            $q->where(function ($qq) {
+                                $qq->whereNull('paid_at')->orWhere('paid_at', '<=', now());
+                            });
+                        }
+                        $sum = (float) $q->sum('amount');
+                        $cur = $r->payments()
+                            ->where('status', 'scheduled')
+                            ->where('payment_type', $type)
+                            ->where('period_month', $month)
+                            ->value('currency') ?? 'CDF';
+
+                        return $sum ? number_format($sum, 0, ' ', ' ') . ' ' . $cur : null;
+                    })
+                    ->toggleable(),
+
                 Tables\Columns\TextColumn::make('service_number')->label('Matricule')->toggleable()->searchable(),
                 Tables\Columns\TextColumn::make('nin')->label('NIN')->toggleable()->searchable(),
                 Tables\Columns\BadgeColumn::make('status')
@@ -197,6 +229,92 @@ class VeteranResource extends Resource
                         'deceased'   => 'Décédé',
                     ]),
                 Tables\Filters\TrashedFilter::make(),
+                Tables\Filters\Filter::make('to_pay')
+    ->label('À payer')
+    ->form([
+        Forms\Components\Select::make('payment_type')
+            ->label('Type de paiement')
+            ->options([
+                'pension' => 'Pension',
+                'arrears' => 'Arriérés',
+                'aid'     => 'Aide',
+            ])
+            ->native(false), // pas de valeur par défaut
+
+        Forms\Components\DatePicker::make('period_month')
+            ->label('Mois de référence')
+            ->displayFormat('MMMM yyyy'), // pas de valeur par défaut
+
+        Forms\Components\Toggle::make('only_due')
+            ->label('Uniquement échéance passée (paid_at ≤ maintenant)')
+            ->default(true),
+    ])
+    ->query(function (Builder $query, array $data) {
+        $type  = $data['payment_type'] ?? null;
+        $month = ! empty($data['period_month']) ? Carbon::parse($data['period_month'])->startOfMonth() : null;
+        $onlyDue = (bool)($data['only_due'] ?? true);
+
+        // Filtre inactif → on nettoie la mémo et on ne modifie pas la query
+        if (! $type || ! $month) {
+            session()->forget('veterans.to_pay_filters');
+            return $query;
+        }
+
+        // Mémoriser les paramètres pour l’export
+        session([
+            'veterans.to_pay_filters' => [
+                'type'    => $type,
+                'month'   => $month->toDateString(),
+                'onlyDue' => $onlyDue,
+            ],
+        ]);
+
+        $start = $month->copy()->startOfMonth();
+        $end   = $month->copy()->endOfMonth();
+
+        return $query->whereHas('payments', function ($p) use ($type, $month, $start, $end, $onlyDue) {
+            $p->where('status', 'scheduled')
+              ->where('payment_type', $type);
+
+            if ($type === 'pension') {
+                // Pension : une ligne par mois -> on cible ce mois
+                $p->whereDate('period_month', $month);
+            } else {
+                // Arriérés / Aide :
+                // 1) payé/prévu dans le mois choisi (paid_at dans [mois])
+                // OU 2) chevauchement de la période avec le mois choisi
+                $p->where(function($w) use ($start, $end) {
+                    $w->whereBetween('paid_at', [$start, $end])
+                      ->orWhere(function($z) use ($start, $end) {
+                          $z->whereDate('period_start', '<=', $end)
+                            ->whereDate('period_end',   '>=', $start);
+                      });
+                });
+            }
+
+            if ($onlyDue) {
+                // Dû : pas de date prévue OU prévue dans le passé / maintenant
+                $p->where(function ($qq) {
+                    $qq->whereNull('paid_at')
+                       ->orWhere('paid_at', '<=', now());
+                });
+            }
+        });
+    })
+    ->indicateUsing(function (array $data) {
+        $badges = [];
+        if (!empty($data['payment_type'])) {
+            $badges[] = 'Type : '.(['pension'=>'Pension','arrears'=>'Arriérés','aid'=>'Aide'][$data['payment_type']] ?? $data['payment_type']);
+        }
+        if (!empty($data['period_month'])) {
+            $badges[] = 'Mois : '.Carbon::parse($data['period_month'])->isoFormat('MMMM YYYY');
+        }
+        if (($data['only_due'] ?? true) === true) {
+            $badges[] = 'Échéance passée';
+        }
+        return $badges;
+    }),
+
             ])
             ->actions([
                 Tables\Actions\ViewAction::make(),
@@ -326,8 +444,8 @@ class VeteranResource extends Resource
                                 $cur     = $rows->first()->currency ?? 'CDF';
                                 $total   = (float) $rows->sum('amount');
                                 $details = $mode === 'detail'
-                                ? $rows->map(fn($r) => $fmtMoney((float) $r->amount) . " {$cur}")->implode(' + ')
-                                : '';
+                                    ? $rows->map(fn($r) => $fmtMoney((float) $r->amount) . " {$cur}")->implode(' + ')
+                                    : '';
 
                                 $ctx = [
                                     'prenom'        => $vet->firstname ?? '',
@@ -350,6 +468,84 @@ class VeteranResource extends Resource
                                 ->success()
                                 ->send();
                         }),
+                    Tables\Actions\BulkAction::make('export_csv_filtered')
+                        ->label('Exporter CSV (selon filtre)')
+                        ->icon('heroicon-m-arrow-down-tray')
+                        ->color('primary')
+                        ->deselectRecordsAfterCompletion() // tu restes sur ta sélection après
+                        ->action(function (Collection $records) {
+                            $params = session('veterans.to_pay_filters');
+
+                            if (! $params || empty($params['type']) || empty($params['month'])) {
+                                Notification::make()
+                                    ->title('Applique d’abord le filtre “À payer” (type + mois).')
+                                    ->warning()
+                                    ->send();
+                                return;
+                            }
+
+                            $type    = $params['type'];
+                            $month   = Carbon::parse($params['month'])->startOfMonth();
+                            $onlyDue = (bool) ($params['onlyDue'] ?? true);
+
+                            $rows = [];
+
+                            foreach ($records as $vet) {
+                                /** @var \App\Models\Veteran $vet */
+                                if (empty($vet->phone)) {
+                                    // on ignore ceux sans téléphone
+                                    continue;
+                                }
+
+                                $q = $vet->payments()
+                                    ->where('payment_type', $type)
+                                    ->where('period_month', $month)
+                                    ->where('status', 'scheduled');
+
+                                if ($onlyDue) {
+                                    $q->where(function ($qq) {
+                                        $qq->whereNull('paid_at')
+                                            ->orWhere('paid_at', '<=', now());
+                                    });
+                                }
+
+                                $payments = $q->get();
+                                if ($payments->isEmpty()) {
+                                    continue;
+                                }
+
+                                // Ici: une ligne par vétéran, montants agrégés (plus simple pour paiement en vrac)
+                                $amount   = (float) $payments->sum('amount');
+                                $currency = $payments->first()->currency ?? 'CDF';
+
+                                $rows[] = [
+                                    'phone'     => (string) $vet->phone,
+                                    'amount'    => $amount,
+                                    'currency'  => $currency,
+                                    'full_name' => trim(($vet->firstname ?? '') . ' ' . ($vet->lastname ?? '')),
+                                ];
+                            }
+
+                            if (empty($rows)) {
+                                Notification::make()->title('Aucune ligne à exporter.')->warning()->send();
+                                return;
+                            }
+
+                            $filename = 'paiements-' . $type . '-' . $month->format('Y-m') . '.csv';
+
+                            return response()->streamDownload(function () use ($rows) {
+                                $out = fopen('php://output', 'w');
+                                // BOM pour Excel (UTF-8)
+                                fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
+                                // En-têtes
+                                fputcsv($out, ['phone', 'amount', 'currency', 'full_name']);
+                                // Lignes
+                                foreach ($rows as $r) {
+                                    fputcsv($out, [$r['phone'], $r['amount'], $r['currency'], $r['full_name']]);
+                                }
+                                fclose($out);
+                            }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+                        }),
                     Tables\Actions\BulkAction::make('cartes_pdf')
                         ->label('Cartes PDF (sélection)')
                         ->icon('heroicon-m-identification')
@@ -358,6 +554,118 @@ class VeteranResource extends Resource
                             $pdf  = Pdf::loadHTML($html)->setPaper('a4', 'portrait');
                             return response()->streamDownload(fn() => print($pdf->output()), 'cartes.pdf');
                         }),
+                    Tables\Actions\BulkAction::make('export_csv_payments')
+                        ->label('Exporter CSV paiements')
+                        ->icon('heroicon-m-arrow-down-tray')
+                        ->color('primary')
+                        ->modalWidth('lg')
+                        ->form([
+                            Forms\Components\Select::make('payment_type')
+                                ->label('Type de paiement')
+                                ->options([
+                                    'pension' => 'Pension',
+                                    'arrears' => 'Arriérés',
+                                    'aid'     => 'Aide',
+                                ])
+                                ->default('pension')
+                                ->required()
+                                ->native(false),
+
+                            Forms\Components\DatePicker::make('period_month')
+                                ->label('Mois de référence')
+                                ->displayFormat('MMMM yyyy')
+                                ->required(),
+
+                            Forms\Components\Toggle::make('only_due')
+                                ->label('Uniquement échéance passée (paid_at ≤ maintenant)')
+                                ->default(true),
+
+                            Forms\Components\Toggle::make('sum_per_veteran')
+                                ->label('Regrouper par vétéran (somme des montants)')
+                                ->default(true),
+
+                            Forms\Components\Toggle::make('skip_without_phone')
+                                ->label('Ignorer les vétérans sans téléphone')
+                                ->default(true),
+                        ])
+                        ->action(function (Collection $records, array $data) {
+                            $month = Carbon::parse($data['period_month'])->startOfMonth();
+                            $type  = $data['payment_type'];
+
+                            $rows = [];
+
+                            foreach ($records as $vet) {
+                                /** @var \App\Models\Veteran $vet */
+                                if ($data['skip_without_phone'] && empty($vet->phone)) {
+                                    continue;
+                                }
+
+                                $q = $vet->payments()
+                                    ->where('payment_type', $type)
+                                    ->where('period_month', $month)
+                                    ->where('status', 'scheduled');
+
+                                if (! empty($data['only_due'])) {
+                                    $q->where(function ($qq) {
+                                        $qq->whereNull('paid_at')
+                                            ->orWhere('paid_at', '<=', now());
+                                    });
+                                }
+
+                                $payments = $q->get();
+
+                                if ($payments->isEmpty()) {
+                                    continue;
+                                }
+
+                                if (! empty($data['sum_per_veteran'])) {
+                                    $amount   = (float) $payments->sum('amount');
+                                    $currency = $payments->first()->currency ?? 'CDF';
+                                    $rows[]   = [
+                                        'phone'     => (string) $vet->phone,
+                                        'amount'    => $amount,
+                                        'currency'  => $currency,
+                                        'full_name' => trim(($vet->firstname ?? '') . ' ' . ($vet->lastname ?? '')),
+                                    ];
+                                } else {
+                                    foreach ($payments as $p) {
+                                        $rows[] = [
+                                            'phone'     => (string) $vet->phone,
+                                            'amount'    => (float) $p->amount,
+                                            'currency'  => $p->currency ?? 'CDF',
+                                            'full_name' => trim(($vet->firstname ?? '') . ' ' . ($vet->lastname ?? '')),
+                                        ];
+                                    }
+                                }
+                            }
+
+                            if (empty($rows)) {
+                                Notification::make()
+                                    ->title('Aucune ligne à exporter')
+                                    ->warning()
+                                    ->send();
+                                return;
+                            }
+
+                            $filename = 'paiements-' . $type . '-' . $month->format('Y-m') . '.csv';
+
+                            // Stream un CSV (UTF-8 + BOM) au navigateur
+                            return response()->streamDownload(function () use ($rows) {
+                                $out = fopen('php://output', 'w');
+                                // BOM pour Excel
+                                fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
+                                // En-têtes
+                                fputcsv($out, ['phone', 'amount', 'currency', 'full_name']);
+                                // Lignes
+                                foreach ($rows as $r) {
+                                    fputcsv($out, [$r['phone'], $r['amount'], $r['currency'], $r['full_name']]);
+                                }
+                                fclose($out);
+                            }, $filename, [
+                                'Content-Type' => 'text/csv; charset=UTF-8',
+                            ]);
+                        }),
+
                     Tables\Actions\BulkAction::make('export_selected_csv')
                         ->label('Exporter sélection (CSV)')
                         ->icon('heroicon-m-document-arrow-down')
@@ -734,8 +1042,8 @@ class VeteranResource extends Resource
             PaymentsRelationManager::class,
         ];
     }
-public static function canViewForRecord($ownerRecord, string $pageClass): bool
-{
-    return true; // à enlever ensuite
-}
+    public static function canViewForRecord($ownerRecord, string $pageClass): bool
+    {
+        return true; // à enlever ensuite
+    }
 }

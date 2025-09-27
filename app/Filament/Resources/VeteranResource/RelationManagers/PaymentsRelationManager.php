@@ -31,7 +31,7 @@ class PaymentsRelationManager extends RelationManager
             ->actionsPosition(ActionsPosition::BeforeCells)
 
             // 🔹 par défaut, on montre les “programmés”
-            ->modifyQueryUsing(fn ($q) => $q->where('status', 'scheduled')->orderBy('paid_at'))
+            ->modifyQueryUsing(fn ($query) => $query->where('status', 'scheduled')->orderBy('paid_at'))
 
             // 🔹 entête : bouton pour programmer rapidement un paiement
             ->headerActions([
@@ -115,16 +115,16 @@ class PaymentsRelationManager extends RelationManager
             ->columns([
                 Tables\Columns\BadgeColumn::make('payment_type')
                     ->label('Type')
-                    ->formatStateUsing(fn (string $s) => ['pension'=>'Pension','arrears'=>'Arriérés','aid'=>'Aide'][$s] ?? $s),
+                    ->formatStateUsing(fn (string $state) => ['pension'=>'Pension','arrears'=>'Arriérés','aid'=>'Aide'][$state] ?? $state),
 
                 Tables\Columns\TextColumn::make('period_month')->label('Mois')->date('m/Y')->toggleable(),
 
                 Tables\Columns\TextColumn::make('amount')->label('Montant')->alignRight()
-                    ->formatStateUsing(fn ($v, $r) => number_format((float)$v,0,' ',' ').' '.($r->currency ?? 'CDF')),
+                    ->formatStateUsing(fn ($state, $record) => number_format((float)$state,0,' ',' ').' '.($record->currency ?? 'CDF')),
 
                 Tables\Columns\BadgeColumn::make('status')->label('Statut')
                     ->colors(['warning'=>'scheduled','success'=>'paid','danger'=>'failed','gray'=>'refunded'])
-                    ->formatStateUsing(fn ($s) => ['scheduled'=>'Programmé','paid'=>'Payé','failed'=>'Échoué','refunded'=>'Annulé'][$s] ?? $s),
+                    ->formatStateUsing(fn ($state) => ['scheduled'=>'Programmé','paid'=>'Payé','failed'=>'Échoué','refunded'=>'Annulé'][$state] ?? $state),
 
                 Tables\Columns\TextColumn::make('paid_at')->label('Prévu / Payé le')->dateTime('d/m/Y H:i'),
 
@@ -136,9 +136,9 @@ class PaymentsRelationManager extends RelationManager
                     ->options(['scheduled'=>'Programmé','paid'=>'Payé','failed'=>'Échoué','refunded'=>'Annulé'])
                     ->default('scheduled'),
                 Tables\Filters\Filter::make('due')->label('Échéance passée')
-                    ->query(fn ($q) => $q->where('status','scheduled')->whereNotNull('paid_at')->where('paid_at','<=',now())),
+                    ->query(fn ($record) => $record->where('status','scheduled')->whereNotNull('paid_at')->where('paid_at','<=',now())),
                 Tables\Filters\Filter::make('upcoming')->label('À venir')
-                    ->query(fn ($q) => $q->where('status','scheduled')->where('paid_at','>',now())),
+                    ->query(fn ($record) => $record->where('status','scheduled')->where('paid_at','>',now())),
             ])
 
             ->actions([

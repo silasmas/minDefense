@@ -12,13 +12,29 @@ class VeteranPayment extends Model
 {
     use HasFactory,SoftDeletes;
      protected $table = 'veteran_payments';
-    protected $guarded = [];
+     // Colonnes autorisées en écriture (correspondent à ta migration)
+    protected $fillable = [
+        'veteran_id',   // FK -> veterans.id
+        'case_id',      // FK -> veteran_cases.id (nullable)
+        'payment_type', // enum: pension | arrears | aid
+        'period_month', // date: premier jour du mois de référence
+        'period_start', // date: début réel de la période
+        'period_end',   // date: fin réelle de la période
+        'amount',       // decimal(12,2): montant
+        'currency',     // char(3): ex USD/CDF/EUR
+        'status',       // enum: scheduled | paid | failed | refunded
+        'paid_at',      // datetime: quand le paiement a été réellement payé
+        'reference',    // ref bancaire / momo / pièce comptable
+        'notes',        // texte libre
+    ];
 
+    // Casts pour manipuler facilement les dates et montants
     protected $casts = [
-        'period_month' => 'date',   // stocké au 1er du mois
+        'period_month' => 'date',
         'period_start' => 'date',
         'period_end'   => 'date',
         'paid_at'      => 'datetime',
+        'amount'       => 'decimal:2',
     ];
 
     public function veteran()
