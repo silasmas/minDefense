@@ -9,26 +9,37 @@ class StateAssetsMap extends Widget
 {
     protected static string $view = 'widgets.state-assets-map';
     protected static ?string $heading = 'Carte des biens de l’État';
-   protected int|string|array $columnSpan = 'full';
+    protected int|string|array $columnSpan = 'full';
+
     protected function getViewData(): array
     {
         $points = StateAsset::query()
             ->whereNotNull('lat')->whereNotNull('lng')
-            ->select('id', 'title', 'lat', 'lng', 'province', 'city')
-            ->limit(800) // évite surcharge
-            ->get()
-            ->map(fn ($a) => [
-                'lat'   => (float) $a->lat,
-                'lng'   => (float) $a->lng,
-                'label' => trim(($a->title ?? 'Bien').' — '.($a->city ?? '').', '.($a->province ?? '')),
-                'url'   => route('filament.admin.resources.state-assets.view', $a), // adapte ton panel/slug si besoin
+            ->select([
+                'id','asset_code','title','asset_type','material_category',
+                'lat','lng','extent_side_m','footprint',
             ])
-            ->values()
-            ->all();
+            ->latest('id')->limit(1000)->get()
+            ->map(function (StateAsset $a) {
+                return [
+                    'id'        => $a->id,
+                    'code'      => $a->asset_code,
+                    'title'     => $a->title,
+                    'type'      => $a->asset_type,            // materiel|immobilier
+                    'category'  => $a->material_category,     // vehicle|...
+                    'lat'       => (float)$a->lat,
+                    'lng'       => (float)$a->lng,
+                    'extent'    => (int)($a->extent_side_m ?? 0),
+                    'footprint' => $a->footprint ?: null,     // [[lat,lng]...]
+                    'icon'      => $a->material_image_url,    // accessor ci-dessus
+                    'url'       => route('filament.admin.resources.state-assets.view', $a),
+                ];
+            })->values()->all();
 
-        // Centrage par défaut sur la RDC
-        $center = ['lat' => -2.88, 'lng' => 23.65, 'zoom' => 5];
+        $center = ['lat' => -2.88, 'lng' => 23.65, 'zoom' => 5]; // RDC
+        // ➕ ajoute cette ligne :
+    $searchUrl = route('admin.api.state-assets.index'); // l’endpoint JSON de recherche
 
-        return compact('points', 'center');
+       return compact('points', 'center', 'searchUrl'); // <-- inclure searchUrl ici
     }
 }

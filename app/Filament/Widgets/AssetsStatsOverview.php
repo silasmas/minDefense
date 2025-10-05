@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Models\StateAsset;
 use App\Models\VeteranAsset;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
@@ -10,12 +11,12 @@ class AssetsStatsOverview extends BaseWidget
 {
     protected function getStats(): array
     {
-        $total      = VeteranAsset::count();
-        $materiel   = VeteranAsset::where('asset_type','materiel')->count();
-        $immobilier = VeteranAsset::where('asset_type','immobilier')->count();
-        $actifs     = VeteranAsset::where('status','active')->count();
-        $valueCdf   = (float) VeteranAsset::where('currency','CDF')->sum('estimated_value');
-        $valueUsd   = (float) VeteranAsset::where('currency','USD')->sum('estimated_value');
+        $total      = StateAsset::count();
+        $materiel   = StateAsset::where('asset_type','materiel')->count();
+        $immobilier = StateAsset::where('asset_type','immobilier')->count();
+        $actifs     = StateAsset::where('status','active')->count();
+        $valueCdf   = (float) StateAsset::where('currency','CDF')->sum('estimated_value');
+        $valueUsd   = (float) StateAsset::where('currency','USD')->sum('estimated_value');
 
         return [
             Stat::make('Biens (total)', number_format($total, 0, ',', ' '))

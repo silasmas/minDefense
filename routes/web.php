@@ -3,12 +3,19 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\OtpController;
 use App\Http\Controllers\VeteranController;
+use App\Http\Controllers\StateAssetController;
+use App\Http\Controllers\StateAssetApiController;
+use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\VeteranSmsVerifyController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
-use App\Http\Controllers\Auth\NewPasswordController;
-Route::get('/', function () {
-    return view('welcome');
-});
+
+Route::get('/', [StateAssetController::class, 'index'])->name('home');
+Route::get('/about', [StateAssetController::class, 'about'])->name('about');
+Route::get('/actualites', [StateAssetController::class, 'actualites'])->name('actualites');
+Route::get('/ministre', [StateAssetController::class, 'ministre'])->name('ministre');
+Route::get('/gouvernance', [StateAssetController::class, 'gouvernance'])->name('gouvernance');
+Route::get('/events', [StateAssetController::class, 'events'])->name('events');
+Route::get('/contact', [StateAssetController::class, 'contact'])->name('contact');
 
 
 Route::prefix('otp')->group(function () {
@@ -53,3 +60,11 @@ Route::get('/admin/veterans/{veteran}/card/duplex', [VeteranController::class,'d
 Route::get('/symlink', function () {
     return view('symlink');
 })->name('generate_symlink');
+
+// routes/web.php
+Route::middleware(['web','auth'])
+    ->prefix('admin/api')
+    ->group(function () {
+        Route::get('/state-assets', [\App\Http\Controllers\Admin\StateAssetApiController::class,'index'])
+            ->name('admin.api.state-assets.index');
+    });

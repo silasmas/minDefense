@@ -13,7 +13,29 @@ class StateAssetController extends Controller
      */
     public function index()
     {
-        //
+       return view('site.pages.home');
+    }
+    public function about()
+    {
+       return view('site.pages.about');
+    }
+
+ 
+    public function ministre()
+    {
+       return view('site.pages.minstre');
+    }
+    public function gouvernance()
+    {
+       return view('site.pages.gouv');
+    }
+    public function contact()
+    {
+       return view('site.pages.contact');
+    }
+    public function actualites()
+    {
+       return view('site.pages.actualites');
     }
 
     /**

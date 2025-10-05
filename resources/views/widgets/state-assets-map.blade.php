@@ -1,47 +1,47 @@
-@php
-    $points = $points ?? [];
-    $center = $center ?? ['lat' => -2.88, 'lng' => 23.65, 'zoom' => 5];
-@endphp
+{{-- resources/views/widgets/state-assets-map.blade.php --}}
+<div
+    wire:ignore
+    x-data="{
+        boot(){
+            // Attendre Leaflet + conteneur dimensionné
+            const wait = (t=0)=>{
+                const ok = (typeof window.L !== 'undefined')
+                    && document.getElementById('state-assets-leaflet')
+                    && document.getElementById('state-assets-leaflet').getBoundingClientRect().height > 0;
+                if (ok) return this.init();
+                if (t>80) { console.error('Map init timeout'); return; }
+                setTimeout(()=>wait(t+1), 50);
+            };
+            wait();
+        },
+        init(){
+            console.log('Leaflet version:', L.version);
+            const map = L.map('state-assets-leaflet').setView([-2.88, 23.65], 5);
+            // Si OSM est bloqué, décommente la ligne Carto ci-dessous:
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 20}).addTo(map);
+            // L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {maxZoom:20}).addTo(map);
 
-<div x-data x-init="
-    const ensureLeaflet = () => new Promise((resolve) => {
-        if (window.L) return resolve();
-        const css = document.createElement('link');
-        css.rel = 'stylesheet';
-        css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        document.head.appendChild(css);
-        const js = document.createElement('script');
-        js.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-        js.onload = () => resolve();
-        document.body.appendChild(js);
-    });
+            // Marqueur test
+            L.marker([-4.32, 15.31]).addTo(map).bindPopup('Kinshasa').openPopup();
 
-    ensureLeaflet().then(() => {
-        const pts = @js($points);
-        const c   = @js($center);
-
-        const map = L.map($refs.map).setView([c.lat, c.lng], c.zoom);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap'
-        }).addTo(map);
-
-        const markers = [];
-        pts.forEach(p => {
-            if (!p.lat || !p.lng) return;
-            const m = L.marker([p.lat, p.lng]).addTo(map);
-            let html = p.label || 'Bien';
-            if (p.url) html += `<br><a href='${p.url}' target='_blank'>Voir</a>`;
-            m.bindPopup(html);
-            markers.push(m);
-        });
-
-        if (markers.length) {
-            const group = L.featureGroup(markers);
-            map.fitBounds(group.getBounds().pad(0.2));
+            // Repeindre après rendus Livewire/resize
+            setTimeout(()=>map.invalidateSize(), 80);
+            window.addEventListener('resize', ()=>map.invalidateSize());
+            document.addEventListener('livewire:navigated', ()=>map.invalidateSize());
         }
-
-        setTimeout(() => map.invalidateSize(), 250);
-    });
-">
-    <div x-ref="map" style="width:100%; height:420px; border-radius:12px; overflow:hidden;"></div>
+    }"
+    x-init="$nextTick(() => boot())"
+    class="w-full"
+>
+    <div class="rounded-xl border overflow-hidden">
+        <div id="state-assets-leaflet" style="height:560px; min-height:560px; width:100%"></div>
+    </div>
 </div>
+
+@push('styles')
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+@endpush
+
+@push('scripts')
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+@endpush

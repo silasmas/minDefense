@@ -1,18 +1,33 @@
 <?php
 namespace App\Filament\Resources;
 
+use App\Filament\Resources\StateAssetResource\Pages;
+use App\Filament\Resources\StateAssetResource\RelationManagers\AssignmentsRelationManager;
+use App\Filament\Resources\StateAssetResource\RelationManagers\LogsRelationManager;
+use App\Models\StateAsset;
 use Closure;
 use Filament\Forms;
-use Filament\Tables;
-use Filament\Forms\Get;
-use Filament\Forms\Form;
-use App\Models\StateAsset;
-use Filament\Tables\Table;
-use Filament\Resources\Resource;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Group;
+use Filament\Forms\Components\Section;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
-use App\Filament\Resources\StateAssetResource\Pages;
-use App\Filament\Resources\StateAssetResource\RelationManagers\LogsRelationManager;
-use App\Filament\Resources\StateAssetResource\RelationManagers\AssignmentsRelationManager;
+use Filament\Forms\Components\View;
+// use Filament\Forms\Components\ViewField;
+use Filament\Forms\Components\View as ViewField;
+use Filament\Forms\Form;
+use Filament\Forms\Get;
+use Filament\Infolists\Components\Section as InfoSection;
+use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Components\ViewEntry;
+
+// use App\Filament\Resources\Infolists\Infolist;
+use Filament\Infolists\Infolist;
+use Filament\Resources\Resource;
+use Filament\Tables;
+use Filament\Tables\Table;
 
 class StateAssetResource extends Resource
 {
@@ -26,13 +41,14 @@ class StateAssetResource extends Resource
     public static function form(Form $form): Form
     {
         return $form->schema([
-            Forms\Components\Section::make('Identification')
+            Section::make('Identification')
                 ->columns(3)
                 ->schema([
-                    Forms\Components\Select::make('asset_type')
+                    Select::make('asset_type')
                         ->label('Type de bien')
                         ->options(['materiel' => 'Matériel', 'immobilier' => 'Immobilier'])
                         ->required()
+                        ->live() // pour réagir côté front
                         ->native(false)
                         ->helperText('Choisissez la nature du bien. « Matériel » (véhicule, ordinateur, etc.) ou « Immobilier » (parcelle, bâtiment, entrepôt, etc.).'),
 
@@ -41,47 +57,60 @@ class StateAssetResource extends Resource
                         ->required()
                         ->maxLength(50)
                         ->unique(ignoreRecord: true, table: 'state_assets', column: 'asset_code'), // unicité
-
-                    Forms\Components\TextInput::make('category')
+                    Select::make('material_category')
+                        ->label('Catégorie matériel')
+                        ->options([
+                            'vehicle'   => 'Véhicule',
+                            'computer'  => 'Informatique',
+                            'furniture' => 'Mobilier',
+                            'medical'   => 'Médical',
+                        ])
+                        ->visible(fn($get) => $get('asset_type') === 'materiel'),
+                    FileUpload::make('material_image_path')
+                        ->label('Image du matériel (optionnel)')
+                        ->image()
+                        ->directory('materials')
+                        ->visible(fn($get) => $get('asset_type') === 'materiel'),
+                    TextInput::make('category')
                         ->label('Catégorie')
                         ->maxLength(64)
                         ->helperText('Famille fonctionnelle du bien (ex. « Véhicule », « Informatique », « Terrain »).'),
 
-                    Forms\Components\TextInput::make('title')
+                    TextInput::make('title')
                         ->label('Désignation')
                         ->required()
                         ->maxLength(150)
                         ->helperText('Titre court et explicite du bien (ex. « Toyota Hilux 2.4D 2020 » ou « Parcelle UPN/15 »).'),
 
-                    Forms\Components\TextInput::make('serial_number')
+                    TextInput::make('serial_number')
                         ->label('N° série (si matériel)')
                         ->maxLength(120)
                         ->helperText('Numéro de série/IMEI/châssis du matériel. Laissez vide pour un bien immobilier.'),
 
-                    Forms\Components\Textarea::make('description')
+                    Textarea::make('description')
                         ->label('Description')
                         ->rows(3)
                         ->columnSpanFull()
                         ->helperText('Détails complémentaires : état, caractéristiques, remarques, références internes…'),
-                ]),
+                ])->columns(2),
 
-            Forms\Components\Section::make('Valeur & statut')
+            Section::make('Valeur & statut')
                 ->columns(3)
                 ->schema([
-                    Forms\Components\TextInput::make('estimated_value')
+                    TextInput::make('estimated_value')
                         ->label('Valeur estimée')
                         ->numeric()
                         ->minValue(0)
                         ->helperText('Montant estimatif du bien pour le suivi patrimonial et les rapports (sans séparateur de milliers).'),
 
-                    Forms\Components\Select::make('currency')
+                    Select::make('currency')
                         ->label('Devise')
                         ->options(['CDF' => 'CDF', 'USD' => 'USD'])
                         ->default('CDF')
                         ->native(false)
                         ->helperText('Devise utilisée pour la valeur estimée.'),
 
-                    Forms\Components\Select::make('status')
+                    Select::make('status')
                         ->label('Statut')
                         ->options([
                             'active'            => 'Actif',
@@ -92,24 +121,42 @@ class StateAssetResource extends Resource
                         ->native(false)
                         ->helperText('État de vie du bien : en service (Actif), en réparation (Maintenance), ou sorti du patrimoine (Cédé).'),
 
-                    Forms\Components\DatePicker::make('acquired_at')
+                    DatePicker::make('acquired_at')
                         ->label('Date d’acquisition')
                         ->helperText('Date d’entrée du bien dans le patrimoine (achat, don, transfert…).'),
 
-                    Forms\Components\DatePicker::make('disposed_at')
+                    DatePicker::make('disposed_at')
                         ->label('Date de cession')
                         ->helperText('Renseignez uniquement si le bien a été cédé / désaffecté / détruit.'),
 
-                    Forms\Components\TextInput::make('managing_agency')
+                    TextInput::make('managing_agency')
                         ->label('Structure gestionnaire')
                         ->maxLength(150)
                         ->helperText('Entité administrative responsable du bien (ex. « Direction Logistique », « Antenne Provinciale Nord-Kivu »).'),
                 ]),
+            Section::make('Géolocalisation')
+                ->schema([
+                    Group::make()->schema([
+                        TextInput::make('lat')->label('Latitude')->numeric()->step('any'),
+                        TextInput::make('lng')->label('Longitude')->numeric()->step('any'),
+                        TextInput::make('extent_side_m')
+                            ->label('Côté du carré (m)')
+                            ->numeric()
+                            ->minValue(10)
+                            ->hint('Utilisé pour tracer l’emprise IMMOBILIÈRE'),
+                    ])->columns(3),
 
-            Forms\Components\Section::make('Localisation')
+                    // La carte interactive
+                    ViewField::make('asset_map_preview')
+                        ->label('Carte (aperçu)')
+                        ->view('forms.asset-map-preview') // ta blade d’aperçu
+                        ->columnSpanFull()
+                        ->visible(fn(Get $get) => filled($get('lat')) && filled($get('lng'))),
+                ]),
+            Section::make('Localisation')
                 ->columns(3)
                 ->schema([
-                    Forms\Components\TextInput::make('address')
+                    TextInput::make('address')
                         ->label('Adresse')
                         ->columnSpanFull()
                         ->helperText('Adresse postale ou repères de localisation (quartier, avenue, n° parcelle, commune…).'),
@@ -121,11 +168,11 @@ class StateAssetResource extends Resource
                             // Exemple : vider la ville si la province change
                             $set('city', null);
                         })->helperText('Province, état ou région. Exemple : Kinshasa, Nord-Kivu, Sud-Ubangi…'),
-                    Forms\Components\TextInput::make('city')
+                    TextInput::make('city')
                         ->label('Ville')
                         ->helperText('Ville/territoire. Exemple : Kinshasa, Goma, Mbandaka…'),
 
-                    Forms\Components\TextInput::make('country_code')
+                    TextInput::make('country_code')
                         ->label('Pays')
                         ->default('CD')
                         ->maxLength(2)
@@ -154,15 +201,15 @@ class StateAssetResource extends Resource
                             },
                         ])
                         ->helperText('Entre −180 et 180. Ex: 15.31 (Kinshasa).'),
-                    Forms\Components\View::make('forms.asset-map-preview')
+                    View::make('forms.asset-map-preview')
                         ->label('Carte (aperçu)')
                         ->columnSpanFull()
                         ->visible(fn(Forms\Get $get) => filled($get('lat')) && filled($get('lng'))),
                 ]),
 
-            Forms\Components\Section::make('Médias')
+            Section::make('Médias')
                 ->schema([
-                    Forms\Components\FileUpload::make('photos')
+                    FileUpload::make('photos')
                         ->label('Photos')
                         ->disk('public')
                         ->directory('assets')
@@ -239,5 +286,32 @@ class StateAssetResource extends Resource
             'view'   => Pages\ViewStateAsset::route('/{record}'),
             'edit'   => Pages\EditStateAsset::route('/{record}/edit'),
         ];
+    }
+    public static function infolist(Infolist $infolist): Infolist
+    {
+        return $infolist->schema([
+            InfoSection::make('Détails')
+                ->schema([
+                    TextEntry::make('name')->label('Intitulé'),
+                    TextEntry::make('asset_type')->label('Type'),
+                    TextEntry::make('material_category')
+                        ->label('Catégorie matériel')
+                        ->visible(fn($record) => $record->asset_type === 'materiel'),
+                ])->columns(3),
+
+            InfoSection::make('Localisation')
+                ->schema([
+                    ViewEntry::make('map_view')
+                        ->label(false)
+                        ->view('filament.assets.map-view'), // blade ci-dessous
+                ])->columnSpanFull(),
+            InfoSection::make('Localisation')
+                ->schema([
+                    ViewEntry::make('map_explorer')
+                        ->label(false)
+                        ->view('filament.assets.map-explorer'), // <-- nouvelle vue (point 4)
+                ])->columnSpanFull(),
+
+        ]);
     }
 }
