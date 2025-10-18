@@ -22,12 +22,12 @@ class ListStateAssets extends ListRecords
         ];
     }
  // 👉 Ici on met des WIDGETS (pas dans getHeaderActions !)
-    protected function getHeaderWidgets(): array
-    {
-        return [
-            StateAssetsMap::class, // ton widget carte
-        ];
-    }
+    // protected function getHeaderWidgets(): array
+    // {
+    //     return [
+    //         StateAssetsMap::class, // ton widget carte
+    //     ];
+    // }
 
     public function getHeaderWidgetsColumns(): int|array
     {

@@ -42,10 +42,10 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([
-                Widgets\AccountWidget::class,
-                // Widgets\FilamentInfoWidget::class,
+                // Widgets\AccountWidget::class,
+                //  Widgets\FilamentInfoWidget::class,
                   AssetsStatsOverview::class,       // ✅ classe
-                // AssetsMapWidget::class,           // ✅ classe
+                 AssetsMapWidget::class,           // ✅ classe
                 StateAssetsMap::class,           // ✅ classe
             ])
             ->middleware([
@@ -62,8 +62,24 @@ class AdminPanelProvider extends PanelProvider
             ->plugins([
                 FilamentShieldPlugin::make(),
             ])
-            ->authMiddleware([
-                Authenticate::class,
-            ]);
+           ->renderHook('panels::head.start', fn () => <<<HTML
+            <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+            <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css">
+            <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css">
+            <style>
+              .leaflet-container { z-index: 0; }
+              .map-toolbar { position:absolute; top:12px; right:12px; z-index: 500; }
+              .map-legend { position:absolute; left:12px; bottom:12px; z-index:500; background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:8px 10px; box-shadow:0 4px 10px rgba(0,0,0,.06);}
+              .map-legend h4{margin:0 0 6px 0; font-size:13px}
+              .map-legend .row{display:flex; align-items:center; gap:6px; font-size:12px; margin:4px 0}
+              .chip{display:inline-block; width:12px; height:12px; border-radius:2px; border:1px solid #999;}
+              .chip-imm { background:#10b981; border-color:#059669; }
+              .chip-mat { background:#38bdf8; border-color:#0284c7; border-radius:50%;}
+            </style>
+        HTML)
+        ->renderHook('panels::body.end', fn () => <<<HTML
+            <script defer src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+            <script defer src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+        HTML);
     }
 }

@@ -3,6 +3,63 @@
 
 @section("content")
 
+ <!-- Popup d'accueil avec le tweet -->
+    <div class="welcome-popup-overlay" id="welcomePopup">
+      <div class="welcome-popup-content">
+        <div class="welcome-popup-header">
+          <h3><i class="bi bi-twitter"></i> Actualité importante</h3>
+          <button class="welcome-popup-close" id="closeWelcomePopup">
+            <i class="bi bi-x-lg"></i>
+          </button>
+        </div>
+        <div class="welcome-popup-body">
+          <div class="tweet-content">
+            <blockquote class="twitter-tweet" data-media-max-width="560">
+              <p lang="fr" dir="ltr">
+                <a
+                  href="https://twitter.com/hashtag/Gouvernement?src=hash&amp;ref_src=twsrc%5Etfw"
+                  >#Gouvernement</a
+                >: le Conseil d ministres adople le dossier lié à la
+                récupération, sécurisation et valorisation des biens des anciens
+                combattants. Une initiative du ministre délégué près la défense
+                nationale en charge des anciens combattants
+                <a
+                  href="https://twitter.com/EliezerNtambwe0?ref_src=twsrc%5Etfw"
+                  >@EliezerNtambwe0</a
+                >.
+                <a href="https://t.co/hr7Dk51yxP">pic.twitter.com/hr7Dk51yxP</a>
+              </p>
+              &mdash; TEMBUE Jupess (@JupessT)
+              <a
+                href="https://twitter.com/JupessT/status/1974479507760222219?ref_src=twsrc%5Etfw"
+                >October 4, 2025</a
+              >
+            </blockquote>
+          </div>
+          <div class="welcome-message">
+            <p>
+              <strong
+                >Bienvenue sur le site du Ministère de la Défense
+                Nationale</strong
+              >
+            </p>
+            <p>
+              Découvrez les dernières actualités et services dédiés aux anciens
+              combattants.
+            </p>
+          </div>
+        </div>
+        <div class="welcome-popup-footer">
+          <button class="btn btn-primary" id="exploreBtn">
+            Explorer le site
+          </button>
+          <button class="btn btn-outline-primary" id="closeWelcomeBtn">
+            Fermer
+          </button>
+        </div>
+      </div>
+    </div>
+
       <div class="banner">
         <div
           id="carouselExampleAutoplaying"
@@ -801,7 +858,7 @@
           </div>
         </div>
       </div>
-   
+
 
 
 @endsection

@@ -20,4 +20,10 @@ class Dashboard extends BaseDashboard
     {
         return 12;
     }
+    protected function getHeaderWidgets(): array
+{
+    return [
+        \App\Filament\Widgets\AssetsMapWidget::class,
+    ];
+}
 }

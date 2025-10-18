@@ -135,8 +135,7 @@ body {
   border-radius: 8px;
   font-weight: 600;
 }
-.dropdown-menu .dropdown-item:hover,
-.dropdown-menu .dropdown-item.active {
+.dropdown-menu .dropdown-item:hover, .dropdown-menu .dropdown-item.active {
   background: var(--bgBtnLight);
   color: var(--primaryColor);
 }
@@ -154,7 +153,7 @@ a {
 .header-nav .navtop {
   background: rgba(255, 255, 255, 0.9);
   -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+          backdrop-filter: blur(14px);
   padding: 7px 0;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
@@ -298,7 +297,7 @@ a {
 .header-nav .navbar {
   background: rgba(255, 255, 255, 0.9);
   -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+          backdrop-filter: blur(14px);
   padding: 14px 0;
 }
 .header-nav .navbar .nav-item:hover .nav-link {
@@ -323,8 +322,7 @@ a {
   background: var(--redColor);
   display: none;
 }
-.header-nav .navbar .nav-item .nav-link:hover,
-.header-nav .navbar .nav-item .nav-link.active {
+.header-nav .navbar .nav-item .nav-link:hover, .header-nav .navbar .nav-item .nav-link.active {
   color: var(--redColor);
   opacity: 1;
 }
@@ -345,13 +343,13 @@ a {
 }
 
 .banner {
-  min-height: 100vh;
+  min-height: 70vh;
 }
 .banner .carousel {
   min-height: inherit;
 }
 .banner .carousel .carousel-indicators {
-  bottom: 220px;
+  bottom: 80px;
   align-items: center;
 }
 .banner .carousel .carousel-indicators button {
@@ -400,7 +398,7 @@ a {
   background: rgba(0, 0, 0, 0.3);
   border-radius: var(--borderRadius-24);
   -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
+          backdrop-filter: blur(6px);
 }
 .banner .content-text h1 {
   color: var(--whiteColor);
@@ -472,7 +470,7 @@ a {
   color: white;
   font-size: 14px;
   -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+          backdrop-filter: blur(14px);
   padding: 4px 8px;
   border-radius: 50px;
   top: 10px;
@@ -494,21 +492,6 @@ a {
 .block-mission {
   padding: 70px 0;
   background: var(--primaryColor);
-  padding-bottom: 240px;
-  position: relative;
-  z-index: 1;
-}
-.block-mission .filgram {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: url(../images/logos/amoirieBlanc.png);
-  background-size: 120px;
-  filter: grayscale(1);
-  z-index: -1;
-  opacity: 0.08;
 }
 .block-mission h2 {
   font-size: 42px;
@@ -613,7 +596,7 @@ a {
   width: 100%;
   height: 100%;
   -o-object-fit: cover;
-  object-fit: cover;
+     object-fit: cover;
   transition: var(--transition-3);
 }
 .block-detail-actus .block-recent-actus .item-actus h3 {
@@ -656,7 +639,7 @@ a {
   background: rgba(0, 0, 0, 0.558);
   color: var(--whiteColor);
   -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+          backdrop-filter: blur(14px);
   font-size: 14px;
   font-weight: 500;
   padding: 4px 8px;
@@ -666,7 +649,7 @@ a {
 .block-info-ministre .card-ministre .card-citation {
   background: rgba(0, 0, 0, 0.5);
   -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+          backdrop-filter: blur(14px);
   border-radius: var(--borderRadius-24);
   padding: 16px;
   margin-top: -80px;
@@ -751,7 +734,7 @@ a {
   width: 100%;
   height: 100%;
   -o-object-fit: cover;
-  object-fit: cover;
+     object-fit: cover;
 }
 .block-organisme .card .num {
   display: flex;
@@ -791,7 +774,7 @@ a {
   width: 100%;
   height: 100%;
   -o-object-fit: cover;
-  object-fit: cover;
+     object-fit: cover;
 }
 .block-contact .card-info-contact {
   border: none;
@@ -888,17 +871,12 @@ a {
 
 .mot-president {
   padding: 70px 0;
-  padding-top: 0;
-  z-index: 2;
-  position: relative;
 }
 .mot-president .card {
   padding: 10px;
-  background: #ffffff;
+  background: #f9fbff;
   border-radius: var(--borderRadius-24);
   border: none;
-  margin-top: -170px;
-  box-shadow: 0 5px 68px rgba(0, 0, 0, 0.05);
 }
 .mot-president .card .quote {
   position: absolute;
@@ -928,7 +906,7 @@ a {
   width: 100%;
   height: 100%;
   -o-object-fit: cover;
-  object-fit: cover;
+     object-fit: cover;
   position: absolute;
   width: 100%;
   height: 100%;
@@ -956,20 +934,6 @@ a {
 .event {
   padding: 70px 0;
   background: var(--primaryColor);
-  position: relative;
-  z-index: 1;
-}
-.event .filgram {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: url(../images/logos/amoirieBlanc.png);
-  background-size: 120px;
-  filter: grayscale(1);
-  z-index: -1;
-  opacity: 0.08;
 }
 .event h2 {
   color: var(--whiteColor);
@@ -1004,7 +968,7 @@ a {
   width: 100%;
   height: 100%;
   -o-object-fit: cover;
-  object-fit: cover;
+     object-fit: cover;
 }
 .event .card-event h5 {
   color: var(--blacktext);
@@ -1165,7 +1129,7 @@ a {
   flex-direction: column;
   border-radius: 8px;
   -webkit-backdrop-filter: blur(24px);
-  backdrop-filter: blur(24px);
+          backdrop-filter: blur(24px);
   bottom: 30px;
   right: 30px;
 }
@@ -1422,7 +1386,7 @@ a {
   width: 100%;
   height: 100%;
   -o-object-fit: cover;
-  object-fit: cover;
+     object-fit: cover;
   opacity: 0.3;
   filter: grayscale(80%);
 }
@@ -1561,7 +1525,7 @@ a {
   width: 100%;
   height: 100%;
   -o-object-fit: cover;
-  object-fit: cover;
+     object-fit: cover;
 }
 .block-programme h2 {
   color: var(--whiteColor);
@@ -1589,8 +1553,7 @@ a {
   transform-origin: top;
 }
 @keyframes move {
-  0%,
-  100% {
+  0%, 100% {
     transform: rotate(-2deg);
   }
   50% {
@@ -1666,7 +1629,7 @@ a {
   width: 100%;
   height: 100%;
   -o-object-fit: cover;
-  object-fit: cover;
+     object-fit: cover;
 }
 .officiels .card-officiel h5 {
   color: var(--blacktext);
@@ -1774,217 +1737,4 @@ footer hr {
 footer small {
   color: var(--colorMuted);
   font-size: 14px;
-}
-
-/* ===== POPUP D'ACCUEIL ===== */
-.welcome-popup-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(8px);
-  z-index: 3000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  opacity: 1;
-  transition: all var(--transition-3);
-}
-
-.welcome-popup-overlay.hidden {
-  opacity: 0;
-  pointer-events: none;
-}
-
-/* Contenu du popup d'accueil */
-.welcome-popup-content {
-  background: var(--whiteColor);
-  border-radius: var(--borderRadius-12);
-  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.4);
-  max-width: 700px;
-  width: 100%;
-  max-height: 85vh;
-  overflow: hidden;
-  transform: scale(1) translateY(0);
-  transition: all var(--transition-3);
-}
-
-.welcome-popup-overlay.hidden .welcome-popup-content {
-  transform: scale(0.8) translateY(50px);
-}
-
-/* En-tête du popup d'accueil */
-.welcome-popup-header {
-  background: linear-gradient(135deg, var(--primaryColor), var(--blueBtn));
-  color: var(--whiteColor);
-  padding: 20px 25px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.welcome-popup-header h3 {
-  margin: 0;
-  font-size: var(--fnt-20);
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.welcome-popup-header h3 i {
-  font-size: var(--fnt-22);
-  color: #1da1f2;
-}
-
-.welcome-popup-close {
-  background: rgba(255, 255, 255, 0.2);
-  border: none;
-  color: var(--whiteColor);
-  width: 35px;
-  height: 35px;
-  border-radius: var(--borderRadius-r-50);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all var(--transition-3);
-  font-size: var(--fnt-16);
-}
-
-.welcome-popup-close:hover {
-  background: rgba(255, 255, 255, 0.3);
-  transform: scale(1.1);
-}
-
-/* Corps du popup d'accueil */
-.welcome-popup-body {
-  padding: 25px;
-  max-height: 60vh;
-  overflow-y: auto;
-}
-
-.tweet-content {
-  margin-bottom: 20px;
-  padding: 20px;
-  background: #f8f9fa;
-  border-radius: var(--borderRadius-8);
-  border-left: 4px solid #1da1f2;
-}
-
-.tweet-content blockquote {
-  margin: 0;
-  font-size: var(--fnt-14);
-  line-height: 1.5;
-  color: var(--blacktext);
-}
-
-.tweet-content blockquote p {
-  margin-bottom: 10px;
-}
-
-.tweet-content blockquote a {
-  color: #1da1f2;
-  text-decoration: none;
-  font-weight: 600;
-}
-
-.tweet-content blockquote a:hover {
-  text-decoration: underline;
-}
-
-.welcome-message {
-  text-align: center;
-  padding: 20px;
-  background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-  border-radius: var(--borderRadius-8);
-  border: 1px solid #dee2e6;
-}
-
-.welcome-message p {
-  margin-bottom: 10px;
-  color: var(--blacktext);
-  font-size: var(--fnt-14);
-}
-
-.welcome-message p:first-child {
-  font-size: var(--fnt-16);
-  color: var(--primaryColor);
-  font-weight: 600;
-}
-
-/* Pied du popup d'accueil */
-.welcome-popup-footer {
-  padding: 20px 25px;
-  background: #f8f9fa;
-  border-top: 1px solid #e9ecef;
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-}
-
-.welcome-popup-footer .btn {
-  padding: 12px 24px;
-  font-size: var(--fnt-14);
-  font-weight: 600;
-  min-width: 120px;
-}
-
-/* Responsive pour le popup d'accueil */
-@media (max-width: 768px) {
-  .welcome-popup-content {
-    margin: 10px;
-    max-height: 90vh;
-  }
-
-  .welcome-popup-header {
-    padding: 15px 20px;
-  }
-
-  .welcome-popup-header h3 {
-    font-size: var(--fnt-18);
-  }
-
-  .welcome-popup-body {
-    padding: 20px;
-  }
-
-  .tweet-content {
-    padding: 15px;
-  }
-
-  .welcome-message {
-    padding: 15px;
-  }
-
-  .welcome-popup-footer {
-    padding: 15px 20px;
-    flex-direction: column;
-  }
-
-  .welcome-popup-footer .btn {
-    width: 100%;
-  }
-}
-
-/* Animation d'apparition du popup d'accueil */
-@keyframes welcomePopupFadeIn {
-  from {
-    opacity: 0;
-    transform: scale(0.8) translateY(50px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-.welcome-popup-content {
-  animation: welcomePopupFadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/*# sourceMappingURL=app.css.map */
+}/*# sourceMappingURL=app.css.map */

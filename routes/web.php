@@ -4,10 +4,12 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\OtpController;
 use App\Http\Controllers\VeteranController;
 use App\Http\Controllers\StateAssetController;
+use App\Http\Controllers\VeteranAssetController;
 use App\Http\Controllers\StateAssetApiController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\VeteranSmsVerifyController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
+use App\Http\Controllers\Admin\AssetSearchController;
 
 Route::get('/', [StateAssetController::class, 'index'])->name('home');
 Route::get('/about', [StateAssetController::class, 'about'])->name('about');
@@ -67,4 +69,18 @@ Route::middleware(['web','auth'])
     ->group(function () {
         Route::get('/state-assets', [\App\Http\Controllers\Admin\StateAssetApiController::class,'index'])
             ->name('admin.api.state-assets.index');
+    });
+Route::middleware(['auth']) // + 'verified' + Gate si besoin
+    ->prefix('admin/api')
+    ->name('admin.api.')
+    ->group(function () {
+        Route::get('veteran-assets', [VeteranAssetController::class, 'index'])
+            ->name('veteran-assets.index');
+    });
+Route::middleware(['web','filament.admin'])
+    ->prefix(filament()->getCurrentPanel()?->getPath() ?? 'admin')   // <= préfixe réel
+    ->name('admin.')
+    ->group(function () {
+        Route::get('api/assets', [AssetSearchController::class, 'index'])
+            ->name('api.assets.index'); // nom clair
     });

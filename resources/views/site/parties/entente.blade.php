@@ -16,5 +16,10 @@
     />
     <link rel="stylesheet" href="{{asset('css/bootstrap.min.css')}} " />
     <link rel="stylesheet" href="{{asset('css/app.css')}}" />
+     <script
+      async
+      src="https://platform.twitter.com/widgets.js"
+      charset="utf-8"
+    ></script>
   </head>
   <body>
