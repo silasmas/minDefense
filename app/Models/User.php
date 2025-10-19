@@ -48,6 +48,18 @@ class User extends Authenticatable implements FilamentUser
       public function canAccessPanel(Panel $panel): bool
     {
         // 'admin' = id du panel (change si le tien est différent)
-        return $this->hasRole('super_admin') || $this->can('access_admin_panel')|| $this->can('Gestionnaire');
+        return $this->hasRole('super_admin');
+        // return $this->hasRole('super_admin') || $this->can('access_admin_panel')|| $this->can('Gestionnaire');
     }
+
+    //   public function canAccessPanel(Panel $panel): bool
+    // {
+    //     // doit dépendre d'un utilisateur AUTHENTIFIÉ
+    //     if (! auth()->check()) {
+    //         return false;
+    //     }
+
+    //     return $this->hasRole('super_admin')
+    //         || $this->can('access_'.$panel->getId()); // ex: access_admin (Shield)
+    // }
 }

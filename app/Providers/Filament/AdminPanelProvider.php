@@ -30,7 +30,9 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('admin')
-            ->login()
+            ->authGuard('web')              // ← utilise le guard web
+            ->login()                       // ← active la page de login Filament
+            // ->authMiddleware([FilamentAuthenticate::class]) // ← protège le panel
             ->colors([
                 'primary' => Color::Amber,
             ])

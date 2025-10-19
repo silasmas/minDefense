@@ -1,33 +1,34 @@
 <?php
 namespace App\Filament\Resources;
 
-use App\Filament\Resources\StateAssetResource\Pages;
-use App\Filament\Resources\StateAssetResource\RelationManagers\AssignmentsRelationManager;
-use App\Filament\Resources\StateAssetResource\RelationManagers\LogsRelationManager;
-use App\Models\StateAsset;
 use Closure;
 use Filament\Forms;
-use Filament\Forms\Components\DatePicker;
-use Filament\Forms\Components\FileUpload;
+use Filament\Tables;
+use Filament\Forms\Get;
+use Filament\Forms\Form;
+use App\Models\StateAsset;
+use Filament\Tables\Table;
+use Filament\Infolists\Infolist;
+use Filament\Resources\Resource;
+use Filament\Forms\Components\View;
+use Filament\Tables\Actions\Action;
 use Filament\Forms\Components\Group;
-use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Section;
+// use Filament\Forms\Components\ViewField;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\View;
-// use Filament\Forms\Components\ViewField;
-use Filament\Forms\Components\View as ViewField;
-use Filament\Forms\Form;
-use Filament\Forms\Get;
-use Filament\Infolists\Components\Section as InfoSection;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\FileUpload;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Infolists\Components\ViewEntry;
 
 // use App\Filament\Resources\Infolists\Infolist;
-use Filament\Infolists\Infolist;
-use Filament\Resources\Resource;
-use Filament\Tables;
-use Filament\Tables\Table;
+use Filament\Forms\Components\View as ViewField;
+use App\Filament\Resources\StateAssetResource\Pages;
+use Filament\Infolists\Components\Section as InfoSection;
+use App\Filament\Resources\StateAssetResource\RelationManagers\LogsRelationManager;
+use App\Filament\Resources\StateAssetResource\RelationManagers\AssignmentsRelationManager;
 
 class StateAssetResource extends Resource
 {
@@ -250,7 +251,13 @@ class StateAssetResource extends Resource
                 Tables\Columns\TextColumn::make('estimated_value')->label('Valeur')
                     ->formatStateUsing(fn($state, $record) => $state ? number_format((float) $state, 0, ' ', ' ') . ' ' . ($record->currency ?? 'CDF') : '—')
                     ->alignRight(),
-            ])
+            ])->actions([
+        Action::make('mapView')
+            ->label('Vue sur la carte')
+            ->icon('heroicon-o-map-pin')
+            ->url(fn ($record) => route('assets.map', ['matricule' => $record->service_number]))
+            ->openUrlInNewTab(),
+    ])
             ->filters([
                 Tables\Filters\SelectFilter::make('asset_type')->label('Type')
                     ->options(['materiel' => 'Matériel', 'immobilier' => 'Immobilier']),

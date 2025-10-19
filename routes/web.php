@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\MapController;
 use App\Http\Controllers\OtpController;
 use App\Http\Controllers\VeteranController;
 use App\Http\Controllers\StateAssetController;
@@ -8,8 +9,8 @@ use App\Http\Controllers\VeteranAssetController;
 use App\Http\Controllers\StateAssetApiController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\VeteranSmsVerifyController;
-use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Admin\AssetSearchController;
+use App\Http\Controllers\Auth\PasswordResetLinkController;
 
 Route::get('/', [StateAssetController::class, 'index'])->name('home');
 Route::get('/about', [StateAssetController::class, 'about'])->name('about');
@@ -19,6 +20,11 @@ Route::get('/gouvernance', [StateAssetController::class, 'gouvernance'])->name('
 Route::get('/events', [StateAssetController::class, 'events'])->name('events');
 Route::get('/contact', [StateAssetController::class, 'contact'])->name('contact');
 
+
+Route::get('/carte-biens', [MapController::class, 'page'])->name('assets.map');
+
+// API pour chercher et/ou lister (GeoJSON)
+Route::get('/api/assets', [MapController::class, 'api'])->name('api.assets');
 
 Route::prefix('otp')->group(function () {
     Route::post('send/reset',  [OtpController::class, 'sendReset'])->name('otp.send.reset');
